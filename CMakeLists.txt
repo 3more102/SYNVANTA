@@ -14,6 +14,7 @@ add_library(synvanta_core
     src/rtl_ir.cpp
     src/optimizer.cpp
     src/aig.cpp
+    src/aig_optimizer.cpp
     src/compiler.cpp
 )
 target_include_directories(synvanta_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
