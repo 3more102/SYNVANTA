@@ -64,15 +64,6 @@ public:
     std::optional<RtlModule> build(std::vector<Diagnostic>& diagnostics) {
         diagnostics_=&diagnostics; start_diagnostics_=diagnostics.size();
         RtlModule result; result.name=source_.name; module_=&result;
-        for (const auto& port : source_.ports) {
-            if (port.direction == PortDirection::Output &&
-                drivers_.find(port.name) == drivers_.end()) {
-                report(DiagnosticSeverity::Error, "LOW0010",
-                       "output port '" + port.name +
-                           "' has no continuous driver in the supported RTL subset",
-                       port.location);
-            }
-        }
         for(const auto& p:source_.ports){
             SignalInfo info{signal_width(p.range),p.is_signed,p.direction==PortDirection::Input,p.direction==PortDirection::Inout};
             signals_.emplace(p.name,info); result.ports.push_back({p.name,p.direction,info.width,info.is_signed});
@@ -86,6 +77,15 @@ public:
                        "multiple continuous drivers for '" + assignment.lhs +
                            "' cannot be represented by the current RTL IR",
                        assignment.location);
+            }
+        }
+        for (const auto& port : source_.ports) {
+            if (port.direction == PortDirection::Output &&
+                drivers_.find(port.name) == drivers_.end()) {
+                report(DiagnosticSeverity::Error, "LOW0010",
+                       "output port '" + port.name +
+                           "' has no continuous driver in the supported RTL subset",
+                       port.location);
             }
         }
         for(const auto& p:source_.ports){
