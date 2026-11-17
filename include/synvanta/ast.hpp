@@ -25,6 +25,14 @@ struct Expr {
     std::unique_ptr<Expr> lhs, rhs, third;
     SourceLocation location;
 };
+struct NetDeclaration {
+    NetKind net_kind{NetKind::Wire};
+    bool is_signed{false};
+    std::optional<PackedRange> range;
+    std::string name;
+    SourceLocation location;
+};
+
 struct ContinuousAssignment {
     std::string lhs;
     std::unique_ptr<Expr> rhs;
@@ -33,6 +41,7 @@ struct ContinuousAssignment {
 struct Module {
     std::string name;
     std::vector<Port> ports;
+    std::vector<NetDeclaration> nets;
     std::vector<ContinuousAssignment> assignments;
     SourceLocation location;
 };

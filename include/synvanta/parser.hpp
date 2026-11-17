@@ -28,7 +28,7 @@ private:
     std::optional<Module> parse_module();
     std::optional<Port> parse_port();
     std::optional<PackedRange> parse_range();
-    bool parse_ignored_net_declaration();
+    bool parse_net_declaration(Module& module);
     std::optional<ContinuousAssignment> parse_assignment();
     std::unique_ptr<Expr> parse_expression(int min_precedence = 1);
     std::unique_ptr<Expr> parse_prefix();

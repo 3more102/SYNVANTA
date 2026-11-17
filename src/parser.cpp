@@ -72,7 +72,7 @@ std::optional<Module> Parser::parse_module(){
             auto a=parse_assignment();if(a)module.assignments.push_back(std::move(*a));else synchronize_module_item();continue;
         }
         if(check(TokenKind::Wire)||check(TokenKind::Logic)||check(TokenKind::Reg)||check(TokenKind::Bit)){
-            if(!parse_ignored_net_declaration())synchronize_module_item();continue;
+            if(!parse_net_declaration(module))synchronize_module_item();continue;
         }
         report("PAR0005","unsupported module item; SYNVANTA 0.1 accepts continuous assignments and simple net declarations",peek().location);
         synchronize_module_item();if(!check(TokenKind::Endmodule)&&!at_end())advance();
@@ -122,18 +122,37 @@ std::optional<int> Parser::parse_integer_literal(const Token& t)const{
     if(r.ec!=std::errc{}||r.ptr!=s.data()+s.size()||value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())return std::nullopt;
     return static_cast<int>(value);
 }
-bool Parser::parse_ignored_net_declaration(){
-    advance();if(match(TokenKind::Signed)){}else match(TokenKind::Unsigned);
-    if(match(TokenKind::LBracket)){
-        if(!check(TokenKind::Number)){report("PAR0010","internal net range bounds must be integer literals in SYNVANTA 0.1",peek().location);return false;}
-        advance();if(!expect(TokenKind::Colon,"expected ':' in internal net range"))return false;
-        if(!check(TokenKind::Number)){report("PAR0011","internal net range bounds must be integer literals in SYNVANTA 0.1",peek().location);return false;}
-        advance();if(!expect(TokenKind::RBracket,"expected ']' after internal net range"))return false;
+bool Parser::parse_net_declaration(Module& module) {
+    const Token type_token = advance();
+    NetKind kind = NetKind::Wire;
+    if (type_token.kind == TokenKind::Logic) kind = NetKind::Logic;
+    else if (type_token.kind == TokenKind::Reg) kind = NetKind::Reg;
+    else if (type_token.kind == TokenKind::Bit) kind = NetKind::Bit;
+
+    bool is_signed = false;
+    if (match(TokenKind::Signed)) is_signed = true;
+    else match(TokenKind::Unsigned);
+
+    std::optional<PackedRange> range;
+    if (check(TokenKind::LBracket)) {
+        range = parse_range();
+        if (!range) return false;
     }
-    if(!expect(TokenKind::Identifier,"expected internal net name"))return false;
-    while(match(TokenKind::Comma))if(!expect(TokenKind::Identifier,"expected internal net name after ','"))return false;
-    return expect(TokenKind::Semicolon,"expected ';' after internal net declaration");
+
+    for (;;) {
+        if (!expect(TokenKind::Identifier, "expected internal net name")) return false;
+        NetDeclaration declaration;
+        declaration.net_kind = kind;
+        declaration.is_signed = is_signed;
+        declaration.range = range;
+        declaration.name = previous().lexeme;
+        declaration.location = previous().location;
+        module.nets.push_back(std::move(declaration));
+        if (!match(TokenKind::Comma)) break;
+    }
+    return expect(TokenKind::Semicolon, "expected ';' after internal net declaration");
 }
+
 std::optional<ContinuousAssignment> Parser::parse_assignment(){
     const Token start=advance();if(!expect(TokenKind::Identifier,"continuous assignment target must be an identifier"))return std::nullopt;
     ContinuousAssignment a;a.lhs=previous().lexeme;a.location=start.location;

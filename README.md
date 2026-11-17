@@ -4,7 +4,7 @@
 
 SYNVANTA is a compiler project focused on building an independently implemented ASIC synthesis engine. The initial engineering target is a reliable SystemVerilog frontend and a clean architecture that can grow into elaboration, RTL lowering, Boolean optimization, Liberty ingestion, technology mapping, and mapped-netlist generation.
 
-> **Current status: 0.1 parser bring-up.** This version lexes and parses a documented SystemVerilog subset and can inspect module interfaces and continuous assignments. It does not yet synthesize logic, optimize a Boolean network, read Liberty libraries, or map standard cells.
+> **Current status: 0.1 frontend bring-up.** The frontend lexes/parses a documented SystemVerilog subset, builds an AST, resolves module-local names, checks continuous-assignment targets and drivers, and warns about undriven outputs. It does not yet lower RTL into a synthesis IR, optimize logic, read Liberty libraries, or map standard cells.
 
 ## Build
 

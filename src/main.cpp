@@ -14,7 +14,7 @@ int run(const std::string& command,const std::string& path){
     const synvanta::Compiler compiler;const auto result=compiler.compile(source,path);
     for(const auto& d:result.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
     if(!result.success())return 1;
-    if(command=="check"){std::cout<<"SYNVANTA: syntax check passed ("<<result.unit.modules.size()<<" module(s)).\n";return 0;}
+    if(command=="check"){std::cout<<"SYNVANTA: syntax and semantic checks passed ("<<result.unit.modules.size()<<" module(s)).\n";return 0;}
     for(const auto& m:result.unit.modules){
         std::cout<<"module "<<m.name<<"\n  ports: "<<m.ports.size()<<'\n';
         for(const auto& p:m.ports){

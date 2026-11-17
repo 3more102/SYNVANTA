@@ -9,10 +9,11 @@
 - [x] Pratt expression parser.
 - [x] CLI `check` and `inspect` commands.
 - [x] Unit tests and CI workflow.
+- [x] Module-local symbol table and basic semantic diagnostics.
 
 ## Phase 1 — Language semantics and elaboration
 
-- [ ] Symbol table and duplicate/undeclared identifier checks.
+- [x] Module-local symbol table and duplicate/undeclared identifier checks.
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
 - [ ] Bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.

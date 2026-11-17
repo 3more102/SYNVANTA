@@ -7,7 +7,7 @@ SYNVANTA is an independently implemented SystemVerilog-to-standard-cell ASIC syn
 ## Planned compilation pipeline
 
 ```text
-SystemVerilog -> Lexer -> Parser -> AST
+SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
                            Elaboration
                                   |
