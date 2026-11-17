@@ -11,7 +11,8 @@ This document describes parser bring-up support. Parsing support does not imply 
 - Packed ranges with integer-literal bounds, such as `[7:0]`.
 - Simple internal net declarations.
 - Continuous assignments with identifier targets: `assign y = expression;`.
-- Identifiers, integer literals, sized based literals, and unbased unsized literals. Wildcard `?` digits inside based literals are not yet accepted; `?` is tokenized as the conditional operator.
+- Identifiers, integer literals, and sized based literals.
+- The parser recognizes unbased unsized fill literals ('0 and '1), but RTL lowering rejects them until context-determined sizing is implemented. Wildcard `?` digits inside based literals are not yet accepted; `?` is tokenized as the conditional operator.
 - Parenthesized expressions, unary operators, arithmetic, shifts, relational/equality, bitwise, logical, and conditional operators.
 - Line comments and block comments.
 
