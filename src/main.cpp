@@ -28,6 +28,7 @@ int run(const std::string& command,const std::string& path){
         for(const auto& d:optimized.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
         if(!optimized.success())return 1;
         std::cout<<"# optimization: folded="<<optimized.stats.constants_folded
+                 <<" muxes_simplified="<<optimized.stats.muxes_simplified
                  <<" cse_removed="<<optimized.stats.common_subexpressions_removed
                  <<" dead_removed="<<optimized.stats.dead_nodes_removed
                  <<" nodes="<<optimized.stats.nodes_before<<"->"<<optimized.stats.nodes_after<<'\n';

@@ -1,0 +1,1 @@
+module common_subexpression(input logic a, input logic b, output logic y, output logic z);\n    assign y = a ^ b;\n    assign z = a ^ b;\nendmodule\n

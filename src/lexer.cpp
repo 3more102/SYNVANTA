@@ -21,7 +21,7 @@ bool id_continue(char c) {
 }
 bool based_digit(char c) {
     const auto u=static_cast<unsigned char>(c);
-    return std::isalnum(u)!=0 || c=='_' || c=='?';
+    return std::isalnum(u)!=0 || c=='_';
 }
 }
 const char* token_kind_name(TokenKind k) {

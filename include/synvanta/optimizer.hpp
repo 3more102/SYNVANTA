@@ -8,6 +8,7 @@ struct OptimizationStats {
     std::size_t nodes_before{0};
     std::size_t nodes_after{0};
     std::size_t constants_folded{0};
+    std::size_t muxes_simplified{0};
     std::size_t common_subexpressions_removed{0};
     std::size_t dead_nodes_removed{0};
 };

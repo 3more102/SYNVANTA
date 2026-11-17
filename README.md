@@ -25,6 +25,8 @@ synvanta check examples/half_adder.sv
 synvanta inspect examples/mux2.sv
 synvanta ir examples/half_adder.sv
 synvanta optimize examples/half_adder.sv
+synvanta optimize examples/constant_fold.sv
+synvanta optimize examples/common_subexpression.sv
 ```
 
 `check` runs lexical, syntax, and basic semantic checks. `inspect` prints module interfaces and assignment counts. `ir` prints the typed, technology-independent RTL IR. `optimize` runs the initial RTL optimization passes and prints the optimized IR with pass statistics.

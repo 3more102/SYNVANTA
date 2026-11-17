@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -98,8 +99,11 @@ std::optional<std::uint64_t> evaluate(const RtlNode& n,const std::vector<RtlNode
         case RtlOp::LessEqual:return sign?(signed_value(l,lw)<=signed_value(r,rw)?1:0):(l<=r?1:0);
         case RtlOp::Greater:return sign?(signed_value(l,lw)>signed_value(r,rw)?1:0):(l>r?1:0);
         case RtlOp::GreaterEqual:return sign?(signed_value(l,lw)>=signed_value(r,rw)?1:0):(l>=r?1:0);
-        case RtlOp::ShiftLeft:return r>=n.width?0:(l<<r)&mask;
-        case RtlOp::ShiftRight:return r>=n.width?0:(l>>r)&mask;
+        case RtlOp::ShiftLeft:
+        case RtlOp::ShiftRight:
+            if(nodes[ri].is_signed&&signed_value(r,rw)<0)return std::nullopt;
+            if(r>=n.width)return 0;
+            return n.op==RtlOp::ShiftLeft?((l<<r)&mask):((l>>r)&mask);
         default:return std::nullopt;
         }
     }
@@ -122,7 +126,20 @@ std::string key_for(const RtlNode& n){
 void optimize_module(RtlModule& m,OptimizationStats& stats){
     stats.nodes_before+=m.nodes.size();
     std::vector<std::optional<std::uint64_t>> constants(m.nodes.size());
+    std::vector<ValueId> aliases(m.nodes.size());
+    std::iota(aliases.begin(),aliases.end(),ValueId{0});
     for(auto& n:m.nodes){
+        for(auto& operand:n.operands)operand=aliases[operand];
+        if(n.op==RtlOp::Mux&&n.operands.size()==3){
+            const auto condition=n.operands[0];
+            if(condition<constants.size()&&constants[condition]){
+                const auto selected=n.operands[*constants[condition]!=0?1:2];
+                aliases[n.id]=aliases[selected];
+                if(aliases[n.id]<constants.size())constants[n.id]=constants[aliases[n.id]];
+                ++stats.muxes_simplified;
+                continue;
+            }
+        }
         const auto v=evaluate(n,m.nodes,constants);if(!v)continue;
         if(n.op!=RtlOp::Constant)++stats.constants_folded;
         n.op=RtlOp::Constant;n.operands.clear();n.name.clear();n.literal=format_constant(n.width,*v);constants[n.id]=*v;
@@ -130,6 +147,7 @@ void optimize_module(RtlModule& m,OptimizationStats& stats){
     std::vector<RtlNode> unique;std::vector<ValueId> remap(m.nodes.size(),0);
     std::unordered_map<std::string,ValueId> seen;
     for(const auto& original:m.nodes){
+        if(aliases[original.id]!=original.id){remap[original.id]=remap[aliases[original.id]];continue;}
         RtlNode n=original;for(auto& op:n.operands)op=remap[op];
         if(commutative(n.op)&&n.operands.size()==2&&n.operands[0]>n.operands[1])std::swap(n.operands[0],n.operands[1]);
         const auto key=key_for(n);const auto found=seen.find(key);

@@ -36,3 +36,9 @@ TEST_CASE(parser_reports_missing_semicolon){
     const synvanta::Compiler c;const auto r=c.compile("module bad(input logic a,output logic y); assign y=a endmodule","bad.sv");
     REQUIRE(!r.success());REQUIRE(!r.diagnostics.empty());
 }
+
+TEST_CASE(parser_separates_based_literal_from_ternary_operator){
+ const synvanta::Compiler c;
+ const auto r=c.compile("module mux(input logic a,input logic b,output logic y);assign y=1'b1?a:b;endmodule","literal_ternary.sv");
+ REQUIRE(r.success());REQUIRE(r.unit.modules[0].assignments[0].rhs->kind==synvanta::ExprKind::Conditional);
+}

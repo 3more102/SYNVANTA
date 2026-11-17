@@ -1,0 +1,1 @@
+module constant_fold(output logic [7:0] y);\n    assign y = 8'd5 + 8'd3;\nendmodule\n

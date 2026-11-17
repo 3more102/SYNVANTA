@@ -3,8 +3,9 @@
 ## Pass sequence
 
 1. Constant folding: evaluate supported operations when all operands are known constants.
-2. Common-subexpression elimination (CSE): merge structurally identical pure operations. Commutative operations use canonical operand order.
-3. Dead-node removal: retain only nodes reachable from module assignment roots.
+2. Constant-condition mux simplification: replace a mux with its selected branch when the condition is known.
+3. Common-subexpression elimination (CSE): merge structurally identical pure operations. Commutative operations use canonical operand order.
+4. Dead-node removal: retain only nodes reachable from module assignment roots.
 
 ## Supported constant evaluation
 
@@ -28,4 +29,4 @@ Operations are left intact when a value is unknown, contains X/Z/? digits, excee
 synvanta optimize examples/half_adder.sv
 ```
 
-The command prints folded/CSE/dead-node counts and the resulting IR.
+The command prints constant-fold, mux-simplification, CSE, and dead-node counts together with the resulting IR.

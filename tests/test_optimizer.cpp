@@ -33,7 +33,7 @@ TEST_CASE(optimizer_removes_dead_input_nodes){
 TEST_CASE(optimizer_folds_constant_mux){
  const auto d=lower_source("module mux(input logic a,input logic b,output logic y);assign y=1'b1?a:b;endmodule");
  const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
- REQUIRE(r.design.modules[0].assignments[0].value==0);REQUIRE(r.design.modules[0].nodes.size()==1);
+ REQUIRE(r.stats.muxes_simplified==1);REQUIRE(r.design.modules[0].assignments[0].value==0);REQUIRE(r.design.modules[0].nodes.size()==1);
  REQUIRE(r.design.modules[0].nodes[0].name=="a");
 }
 TEST_CASE(optimizer_preserves_divide_by_zero){
@@ -46,4 +46,10 @@ TEST_CASE(optimizer_uses_signed_comparison_semantics){
  const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
  REQUIRE(r.design.modules[0].nodes.size()==1);REQUIRE(r.design.modules[0].nodes[0].op==synvanta::RtlOp::Constant);
  REQUIRE(r.design.modules[0].nodes[0].literal=="1'h1");
+}
+
+TEST_CASE(optimizer_does_not_fold_negative_shift_counts){
+ const auto d=lower_source("module neg_shift(output logic [7:0] y);assign y=8'h80>>8'shff;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ bool found=false;for(const auto& n:r.design.modules[0].nodes)found=found||n.op==synvanta::RtlOp::ShiftRight;REQUIRE(found);
 }
