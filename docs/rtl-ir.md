@@ -50,4 +50,4 @@ These are initial implementation rules, not a claim of full IEEE 1800 expression
 synvanta ir examples/half_adder.sv
 ```
 
-The textual dump is intended for debugging and regression tests. A stable machine-readable serialization format will be defined separately before optimization passes depend on it.
+The textual dump is intended for debugging and regression tests. The initial optimizer consumes this in-memory IR and performs constant folding, common-subexpression elimination, and dead-node removal. A stable machine-readable serialization format will be defined separately before external tools depend on it.

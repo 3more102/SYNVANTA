@@ -27,9 +27,11 @@
 - [x] Insert explicit resize nodes for assignment width/signedness conversion.
 - [x] Detect combinational dependency cycles during lowering.
 - [x] Deterministic textual IR dump and lowering regression tests.
+- [x] Initial constant folding for supported two-state operations up to 64 bits.
+- [x] Common-subexpression elimination and dead-node removal.
 - [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
 - [ ] Lower procedural assignments and sequential processes into the IR.
-- [ ] Constant propagation, dead-code elimination, and common-subexpression elimination.
+- [ ] Broader bit-level constant propagation and rewrite passes.
 
 ## Phase 3 — Boolean network and optimization
 
