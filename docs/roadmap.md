@@ -26,6 +26,7 @@
 - [x] Lower supported continuous assignments into the IR.
 - [x] Insert explicit resize nodes for assignment width/signedness conversion.
 - [x] Detect combinational dependency cycles during lowering.
+- [x] Reject multi-driver wire nets and undriven outputs at the RTL-lowering boundary.
 - [x] Deterministic textual IR dump and lowering regression tests.
 - [x] Initial constant folding for supported two-state operations up to 64 bits.
 - [x] Common-subexpression elimination and dead-node removal.

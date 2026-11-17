@@ -62,3 +62,11 @@ TEST_CASE(semantic_warns_about_undriven_outputs) {
     REQUIRE(result.diagnostics.front().severity == synvanta::DiagnosticSeverity::Warning);
     REQUIRE(result.diagnostics.front().code == "SEM1001");
 }
+
+TEST_CASE(semantic_allows_multiple_continuous_drivers_on_wire_nets) {
+    const synvanta::Compiler compiler;
+    const auto result = compiler.compile(
+        "module wired(input logic a, input logic b, output wire y); assign y=a; assign y=b; endmodule",
+        "multi_driver_wire.sv");
+    REQUIRE(result.success());
+}

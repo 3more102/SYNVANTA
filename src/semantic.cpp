@@ -12,6 +12,7 @@ namespace {
 struct Symbol {
     bool is_port{false};
     PortDirection direction{PortDirection::Input};
+    NetKind net_kind{NetKind::Logic};
     SourceLocation location;
 };
 
@@ -44,7 +45,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
 
         std::unordered_map<std::string, Symbol> symbols;
         for (const auto& port : module.ports) {
-            const auto [it, inserted] = symbols.emplace(port.name, Symbol{true, port.direction, port.location});
+            const auto [it, inserted] = symbols.emplace(port.name, Symbol{true, port.direction, port.net_kind, port.location});
             (void)it;
             if (!inserted) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0002",
@@ -52,7 +53,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
             }
         }
         for (const auto& net : module.nets) {
-            const auto [it, inserted] = symbols.emplace(net.name, Symbol{false, PortDirection::Input, net.location});
+            const auto [it, inserted] = symbols.emplace(net.name, Symbol{false, PortDirection::Input, net.net_kind, net.location});
             (void)it;
             if (!inserted) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0002",
@@ -71,9 +72,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
                        "continuous assignment cannot drive input port '" + assignment.lhs + "'", assignment.location);
             }
 
-            if (!driven_targets.insert(assignment.lhs).second) {
+            if (!driven_targets.insert(assignment.lhs).second &&
+                (target == symbols.end() || target->second.net_kind != NetKind::Wire)) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0005",
-                       "multiple continuous assignments drive '" + assignment.lhs + "'", assignment.location);
+                       "multiple continuous assignments drive non-wire signal '" + assignment.lhs + "'",
+                       assignment.location);
             }
 
             visit_identifiers(assignment.rhs.get(), [&](const Expr& identifier) {
