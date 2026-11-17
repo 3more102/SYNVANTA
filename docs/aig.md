@@ -21,6 +21,10 @@ AND nodes are canonicalized by sorting their two input literals and looking up t
 
 OR, XOR, XNOR, and mux functions are composed from AND nodes and complemented edges. The resulting graph is deterministic for a fixed RTL IR node order.
 
+## Output-cone sweep
+
+After lowering, only assignments targeting top-level output ports are retained as observable outputs. An iterative reachability pass walks backward from those output literals, marks live AND/input nodes, rebuilds the graph in topological order, and remaps complemented literals. This removes dead internal-assignment cones and unused input nodes without recursive call-stack growth.
+
 ## Lowered operations
 
 The initial AIG lowerer supports:

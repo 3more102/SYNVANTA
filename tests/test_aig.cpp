@@ -164,6 +164,15 @@ TEST_CASE(aig_structural_hashing_reuses_identical_and_nodes) {
     REQUIRE(output_value(module, inputs, "z") == 0);
 }
 
+TEST_CASE(aig_sweeps_unreachable_internal_logic) {
+    const auto module = lower_source(
+        "module dead_cone(input logic a,input logic b,output logic y);"
+        "wire unused;assign unused=a&b;assign y=a^b;endmodule");
+    REQUIRE(module.assignments.size() == 1);
+    REQUIRE(module.assignments.front().target == "y");
+    REQUIRE(module.network.and_count() == 3);
+}
+
 TEST_CASE(aig_constant_simplification_removes_redundant_and_nodes) {
     const auto module = lower_source(
         "module constant_fold(input logic a,output logic y);assign y=a&1'b0;endmodule");

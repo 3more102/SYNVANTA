@@ -4,6 +4,8 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -88,6 +90,52 @@ AigLit AigNetwork::make_mux(AigLit select, AigLit when_true, AigLit when_false) 
 std::size_t AigNetwork::and_count() const noexcept {
     return static_cast<std::size_t>(std::count_if(nodes_.begin(), nodes_.end(),
         [](const AigNode& node) { return node.kind == AigNodeKind::And; }));
+}
+
+void AigNetwork::compact(std::vector<AigAssignment>& assignments) {
+    std::vector<bool> live(nodes_.size(), false);
+    std::vector<AigLit> pending;
+    for (const auto& assignment : assignments)
+        pending.insert(pending.end(), assignment.bits.begin(), assignment.bits.end());
+
+    while (!pending.empty()) {
+        const AigLit literal = pending.back();
+        pending.pop_back();
+        const auto id = static_cast<std::size_t>(literal >> 1U);
+        if (id == 0 || live.at(id)) continue;
+        live[id] = true;
+        const auto& node = nodes_.at(id);
+        if (node.kind == AigNodeKind::And) {
+            pending.push_back(node.lhs);
+            pending.push_back(node.rhs);
+        }
+    }
+
+    const AigLit invalid = std::numeric_limits<AigLit>::max();
+    std::vector<AigLit> remap(nodes_.size(), invalid);
+    remap[0] = aig_false;
+    AigNetwork compacted;
+
+    const auto remap_literal = [&](AigLit literal) -> AigLit {
+        const auto id = static_cast<std::size_t>(literal >> 1U);
+        if (id == 0) return literal;
+        if (id >= remap.size() || remap[id] == invalid)
+            throw std::logic_error("AIG sweep encountered a non-topological edge");
+        return remap[id] ^ (literal & 1U);
+    };
+
+    for (std::size_t id = 1; id < nodes_.size(); ++id) {
+        if (!live[id]) continue;
+        const auto& node = nodes_[id];
+        if (node.kind == AigNodeKind::Input)
+            remap[id] = compacted.input(node.input_name, node.input_bit);
+        else if (node.kind == AigNodeKind::And)
+            remap[id] = compacted.make_and(remap_literal(node.lhs), remap_literal(node.rhs));
+    }
+
+    for (auto& assignment : assignments)
+        for (auto& literal : assignment.bits) literal = remap_literal(literal);
+    *this = std::move(compacted);
 }
 
 namespace {
@@ -292,7 +340,7 @@ Bits barrel_shift(AigNetwork& network, const Bits& data, const Bits& amount,
 class ModuleLowerer {
 public:
     ModuleLowerer(const RtlModule& source, std::vector<Diagnostic>& diagnostics)
-        : source_(source), diagnostics_(diagnostics) {}
+        : source_(source), diagnostics_(diagnostics), diagnostic_start_(diagnostics.size()) {}
 
     bool run() {
         result_.name = source_.name;
@@ -315,6 +363,11 @@ public:
 
         if (has_errors()) return false;
         for (const auto& assignment : source_.assignments) {
+            const bool is_output_port = std::any_of(source_.ports.begin(), source_.ports.end(),
+                [&](const RtlPort& port) {
+                    return port.name == assignment.target && port.direction == PortDirection::Output;
+                });
+            if (!is_output_port) continue;
             if (assignment.value >= values_.size()) {
                 diagnostics_.push_back({DiagnosticSeverity::Error, "AIG0004",
                     "assignment references an invalid RTL ValueId", {}});
@@ -337,12 +390,14 @@ public:
 private:
     const RtlModule& source_;
     std::vector<Diagnostic>& diagnostics_;
+    std::size_t diagnostic_start_;
     AigModule result_;
     std::vector<Bits> values_;
 
     bool has_errors() const {
-        return std::any_of(diagnostics_.begin(), diagnostics_.end(),
-            [](const Diagnostic& diagnostic) { return diagnostic.severity == DiagnosticSeverity::Error; });
+        for (std::size_t index = diagnostic_start_; index < diagnostics_.size(); ++index)
+            if (diagnostics_[index].severity == DiagnosticSeverity::Error) return true;
+        return false;
     }
 
     void report(const RtlNode& node, const std::string& code, const std::string& message) {
@@ -498,8 +553,11 @@ AigLoweringResult AigLowerer::lower(const RtlDesign& design) const {
     for (const auto& module : design.modules) {
         const auto diagnostic_start = result.diagnostics.size();
         ModuleLowerer lowerer(module, result.diagnostics);
-        if (lowerer.run() && !has_errors(result.diagnostics))
-            result.design.modules.push_back(lowerer.take_result());
+        if (lowerer.run()) {
+            auto lowered_module = lowerer.take_result();
+            lowered_module.network.compact(lowered_module.assignments);
+            result.design.modules.push_back(std::move(lowered_module));
+        }
         else if (result.diagnostics.size() == diagnostic_start)
             result.diagnostics.push_back({DiagnosticSeverity::Error, "AIG0005",
                 "failed to lower RTL module '" + module.name + "' into an AIG", {}});

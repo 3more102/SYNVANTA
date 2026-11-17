@@ -35,6 +35,7 @@
 
 - [x] Lower supported combinational RTL into an AIG with complemented edges.
 - [x] Structural hashing for AND nodes and basic Boolean identity simplification.
+- [x] Output-cone sweeping to remove unreachable AIG logic.
 - [x] Lower add/subtract, multiply, bitwise/logical operations, comparisons, shifts, and muxes.
 - [x] Reference-functional tests for arithmetic, muxing, comparison, and shifts.
 - [ ] AIG balancing, rewriting, and refactoring passes.

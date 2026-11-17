@@ -25,6 +25,8 @@ struct AigNode {
     std::uint32_t input_bit{0};
 };
 
+struct AigAssignment;
+
 class AigNetwork {
 public:
     AigNetwork();
@@ -40,6 +42,7 @@ public:
     const std::vector<AigNode>& nodes() const noexcept { return nodes_; }
     std::size_t input_count() const noexcept { return input_index_.size(); }
     std::size_t and_count() const noexcept;
+    void compact(std::vector<AigAssignment>& assignments);
 
 private:
     std::vector<AigNode> nodes_;

@@ -32,7 +32,7 @@ The compiler has source locations, structured diagnostics, a lexer, a recursive-
 
 ### 0.2 — initial AIG lowering
 
-The AIG stage converts typed combinational RTL operations into a graph containing primary-input nodes and two-input AND nodes. Inversion is represented on edges, so NOT, OR, XOR, XNOR, and mux logic are constructed from AND nodes and complemented literals. AND construction uses structural hashing and basic constant/identity simplification.
+The AIG stage converts typed combinational RTL operations into a graph containing primary-input nodes and two-input AND nodes. Inversion is represented on edges, so NOT, OR, XOR, XNOR, and mux logic are constructed from AND nodes and complemented literals. AND construction uses structural hashing and basic constant/identity simplification. An iterative output-cone sweep removes logic that cannot affect a top-level output.
 
 The first lowering pass includes ripple-carry add/subtract, truncated shift-add multiplication, bitwise/logical operations, equality and magnitude comparisons, logical shifts, and muxes. Division and modulo are diagnosed as unsupported in this stage.
 
