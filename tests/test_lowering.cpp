@@ -48,3 +48,42 @@ TEST_CASE(lowering_normalizes_binary_operand_widths){
  const auto& n=r.design.modules[0].nodes;REQUIRE(n.size()==4);REQUIRE(n[2].op==synvanta::RtlOp::Resize);
  REQUIRE(n[2].width==8);REQUIRE(n[3].op==synvanta::RtlOp::Add);REQUIRE(n[3].operands[0]==0);REQUIRE(n[3].operands[1]==2);
 }
+
+
+TEST_CASE(lowering_rejects_multiple_drivers_on_wire_nets_explicitly) {
+    const std::string source =
+        "module wired(input logic a, input logic b, output wire y); "
+        "assign y=a; assign y=b; endmodule";
+    const synvanta::Compiler compiler;
+    const auto parsed = compiler.compile(source, "multi_driver_wire.sv");
+    REQUIRE(parsed.success());
+
+    const synvanta::RtlLowerer lowerer;
+    const auto lowered = lowerer.lower(parsed.unit);
+    REQUIRE(!lowered.success());
+
+    bool found = false;
+    for (const auto& diagnostic : lowered.diagnostics) {
+        found = found || diagnostic.code == "LOW0009";
+    }
+    REQUIRE(found);
+}
+
+
+TEST_CASE(lowering_rejects_undriven_output_ports) {
+    const synvanta::Compiler compiler;
+    const auto parsed = compiler.compile(
+        "module undriven(input logic a, output logic y); endmodule",
+        "undriven_output.sv");
+    REQUIRE(parsed.success());
+
+    const synvanta::RtlLowerer lowerer;
+    const auto lowered = lowerer.lower(parsed.unit);
+    REQUIRE(!lowered.success());
+
+    bool found = false;
+    for (const auto& diagnostic : lowered.diagnostics) {
+        found = found || diagnostic.code == "LOW0010";
+    }
+    REQUIRE(found);
+}
