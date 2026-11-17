@@ -41,8 +41,9 @@
 - [x] Bit-blast supported combinational RTL IR into AIG nodes.
 - [x] Structural hashing and basic constant/complement simplifications.
 - [x] AIG construction for Boolean logic, muxes, add/subtract, multiply, comparisons, and logical shifts.
+- [x] Positive-polarity AND-tree balancing and unreachable-node sweeping.
 - [x] Exhaustive truth-table tests for representative small combinational designs.
-- [ ] AIG rewriting, balancing, and cut-based local optimization.
+- [ ] AIG rewriting and cut-based local optimization.
 - [ ] Observability-based cleanup and sequential boundary modelling.
 - [ ] Broader equivalence-oriented regression tests and independent formal checking.
 
@@ -70,4 +71,4 @@
 
 ## Current release boundary
 
-The main branch's v0.1 milestone establishes the parser, semantic checks, and typed combinational RTL IR. The AIG backend is being developed on a feature branch as the next engineering increment. Neither milestone is a complete ASIC synthesis product: sequential synthesis, full SystemVerilog semantics, Liberty mapping, SDC timing analysis, and PPA optimization remain future work.
+The main branch's v0.1 milestone establishes the parser, semantic checks, and typed combinational RTL IR. The feature branch adds an independently implemented two-state AIG builder, structural hashing, balancing, sweeping, and exhaustive small-design tests. Neither milestone is a complete ASIC synthesis product: sequential synthesis, full SystemVerilog semantics, Liberty mapping, SDC timing analysis, and PPA optimization remain future work.
