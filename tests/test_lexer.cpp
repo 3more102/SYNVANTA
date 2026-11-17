@@ -18,3 +18,17 @@ TEST_CASE(lexer_reports_unexpected_characters){
     synvanta::Lexer lexer("module m(); @ endmodule","bad.sv");(void)lexer.tokenize();
     REQUIRE(lexer.diagnostics().size()==1);REQUIRE(lexer.diagnostics().front().code=="LEX0001");
 }
+TEST_CASE(lexer_separates_ternary_question_from_sized_binary_literal) {
+    synvanta::Lexer lexer("module m(); assign y=1'b1?a:b; endmodule", "ternary.sv");
+    const auto tokens = lexer.tokenize();
+    REQUIRE(lexer.diagnostics().empty());
+    bool found_literal = false;
+    bool found_question = false;
+    for (const auto& token : tokens) {
+        found_literal = found_literal ||
+            (token.kind == synvanta::TokenKind::Number && token.lexeme == "1'b1");
+        found_question = found_question || token.kind == synvanta::TokenKind::Question;
+    }
+    REQUIRE(found_literal);
+    REQUIRE(found_question);
+}
