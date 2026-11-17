@@ -32,6 +32,12 @@ The builder performs:
 - Bitwise and logical operations, reductions, muxes, and logical shifts.
 - Deterministic AIG text dumps for inspection.
 
+## Implemented AIG optimization
+
+The AIG optimizer rebuilds the network with structural hashing, flattens positive-polarity associative AND trees, balances their leaves pairwise, and sweeps nodes that are no longer reachable from primary outputs. Complemented AND edges are treated as indivisible leaves, preserving NAND polarity.
+
+The optimizer reports node count, AND-node count, and maximum logic depth before and after rebuilding. Balancing targets depth; it is not guaranteed to reduce AND count or area.
+
 ## Supported RTL operations
 
 The current builder supports the operations represented by the initial continuous-assignment RTL IR: input, known constant, resize, unary plus, negate, bitwise/logical NOT, reduction NAND/NOR/XNOR, add, subtract, multiply, bitwise AND/OR/XOR/XNOR, logical AND/OR, equality/inequality, relational comparisons, left/right logical shifts, and conditional mux.
@@ -51,8 +57,8 @@ Build the project and run:
 
     synvanta aig examples/half_adder.sv
 
-The command runs parsing, semantic analysis, RTL lowering, RTL optimization, and AIG construction, then prints the resulting graph and input/AND/output counts. A nonzero exit status indicates a parse, lowering, optimization, or AIG construction error.
+The command runs parsing, semantic analysis, RTL lowering, RTL optimization, AIG construction, and AIG balancing/sweeping. It prints the graph plus node, AND-count, and depth statistics. A nonzero exit status indicates a parse, lowering, optimization, or AIG construction error.
 
 ## Validation
 
-The AIG tests exhaustively compare generated networks against expected truth tables for a half adder, a four-bit adder, signed four-bit comparison, a four-bit mux, and a three-bit multiplier. Additional tests cover fill literals, structural hashing, and explicit rejection of division and unknown constants.
+The AIG tests exhaustively compare generated networks against expected truth tables for a half adder, a four-bit adder, signed four-bit comparison, a four-bit mux, and a three-bit multiplier. Additional tests cover fill literals, structural hashing, rejection of division and unknown constants, AIG depth reduction, and functional preservation after balancing.
