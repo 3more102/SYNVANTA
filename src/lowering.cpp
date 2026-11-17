@@ -24,7 +24,13 @@ std::optional<ConstantInfo> parse_constant(const std::string& raw) {
     std::string s; s.reserve(raw.size()); for(char ch:raw)if(ch!='_')s.push_back(ch);
     const auto apos=s.find(static_cast<char>(39));
     if(apos==std::string::npos)return ConstantInfo{32,true,s};
-    if(apos==0)return ConstantInfo{1,false,s};
+    if(apos==0){
+        // SystemVerilog unbased unsized '0 and '1 are fill literals.
+        // Mark '1 signed in the one-bit IR so Resize sign-extends it to all ones.
+        if(s.size()==2&&(s[1]=='0'||s[1]=='1'))
+            return ConstantInfo{1,s[1]=='1',s};
+        return ConstantInfo{1,false,s};
+    }
     std::uint32_t width=0;
     const auto wr=std::from_chars(s.data(),s.data()+apos,width,10);
     if(wr.ec!=std::errc{}||wr.ptr!=s.data()+apos||width==0)return std::nullopt;
