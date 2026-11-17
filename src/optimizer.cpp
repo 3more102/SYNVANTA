@@ -116,39 +116,87 @@ bool commutative(RtlOp op){
 }
 std::string key_for(const RtlNode& n){
     std::ostringstream out;out<<static_cast<int>(n.op)<<':'<<n.width<<':'<<n.is_signed<<':';
-    if(n.op==RtlOp::Input)out<<n.name;if(n.op==RtlOp::Constant)out<<n.literal;
-    for(auto v:n.operands)out<<':'<<v;return out.str();
+    if(n.op==RtlOp::Input)out<<n.name;
+    if(n.op==RtlOp::Constant)out<<n.literal;
+    for(auto v:n.operands)out<<':'<<v;
+    return out.str();
 }
 void optimize_module(RtlModule& m,OptimizationStats& stats){
     stats.nodes_before+=m.nodes.size();
     std::vector<std::optional<std::uint64_t>> constants(m.nodes.size());
+    std::vector<ValueId> aliases(m.nodes.size());
+    for(std::size_t i=0;i<aliases.size();++i)aliases[i]=static_cast<ValueId>(i);
+    const auto resolve_alias=[&](ValueId id){
+        while(id<aliases.size()&&aliases[id]!=id)id=aliases[id];
+        return id;
+    };
+
+    // A constant select removes a mux even when the selected data input is not constant.
     for(auto& n:m.nodes){
-        const auto v=evaluate(n,m.nodes,constants);if(!v)continue;
+        for(auto& operand:n.operands)operand=resolve_alias(operand);
+        if(n.op==RtlOp::Mux&&n.operands.size()==3){
+            const auto select=n.operands[0];
+            if(select<constants.size()&&constants[select]){
+                const auto selected=resolve_alias(n.operands[*constants[select]!=0?1:2]);
+                aliases[n.id]=selected;
+                constants[n.id]=constants[selected];
+                continue;
+            }
+            if(n.operands[1]==n.operands[2]){
+                const auto selected=resolve_alias(n.operands[1]);
+                aliases[n.id]=selected;
+                constants[n.id]=constants[selected];
+                continue;
+            }
+        }
+
+        aliases[n.id]=n.id;
+        const auto value=evaluate(n,m.nodes,constants);
+        if(!value)continue;
         if(n.op!=RtlOp::Constant)++stats.constants_folded;
-        n.op=RtlOp::Constant;n.operands.clear();n.name.clear();n.literal=format_constant(n.width,*v);constants[n.id]=*v;
+        n.op=RtlOp::Constant;n.operands.clear();n.name.clear();
+        n.literal=format_constant(n.width,*value);constants[n.id]=*value;
     }
+
     std::vector<RtlNode> unique;std::vector<ValueId> remap(m.nodes.size(),0);
     std::unordered_map<std::string,ValueId> seen;
     for(const auto& original:m.nodes){
-        RtlNode n=original;for(auto& op:n.operands)op=remap[op];
-        if(commutative(n.op)&&n.operands.size()==2&&n.operands[0]>n.operands[1])std::swap(n.operands[0],n.operands[1]);
+        const auto source_id=resolve_alias(original.id);
+        if(source_id!=original.id){
+            remap[original.id]=remap[source_id];
+            continue;
+        }
+        RtlNode n=original;
+        for(auto& operand:n.operands)operand=remap[resolve_alias(operand)];
+        if(commutative(n.op)&&n.operands.size()==2&&n.operands[0]>n.operands[1])
+            std::swap(n.operands[0],n.operands[1]);
         const auto key=key_for(n);const auto found=seen.find(key);
-        if(found!=seen.end()){remap[original.id]=found->second;++stats.common_subexpressions_removed;continue;}
-        n.id=static_cast<ValueId>(unique.size());remap[original.id]=n.id;seen.emplace(key,n.id);unique.push_back(std::move(n));
+        if(found!=seen.end()){
+            remap[original.id]=found->second;++stats.common_subexpressions_removed;continue;
+        }
+        n.id=static_cast<ValueId>(unique.size());remap[original.id]=n.id;
+        seen.emplace(key,n.id);unique.push_back(std::move(n));
     }
-    for(auto& a:m.assignments)a.value=remap[a.value];m.nodes=std::move(unique);
+    for(auto& assignment:m.assignments)
+        assignment.value=remap[resolve_alias(assignment.value)];
+    m.nodes=std::move(unique);
+
     std::vector<bool> live(m.nodes.size(),false);
     auto mark=[&](auto&& self,ValueId id)->void{
-        if(id>=m.nodes.size()||live[id])return;live[id]=true;for(auto op:m.nodes[id].operands)self(self,op);
+        if(id>=m.nodes.size()||live[id])return;
+        live[id]=true;
+        for(auto op:m.nodes[id].operands)self(self,op);
     };
-    for(const auto& a:m.assignments)mark(mark,a.value);
+    for(const auto& assignment:m.assignments)mark(mark,assignment.value);
     std::vector<ValueId> compact_map(m.nodes.size(),0);std::vector<RtlNode> compact;
     for(std::size_t i=0;i<m.nodes.size();++i)if(live[i]){
-        compact_map[i]=static_cast<ValueId>(compact.size());auto n=m.nodes[i];n.id=compact_map[i];compact.push_back(std::move(n));
+        compact_map[i]=static_cast<ValueId>(compact.size());
+        auto n=m.nodes[i];n.id=compact_map[i];compact.push_back(std::move(n));
     }
-    for(auto& n:compact)for(auto& op:n.operands)op=compact_map[op];
-    for(auto& a:m.assignments)a.value=compact_map[a.value];
-    stats.dead_nodes_removed+=m.nodes.size()-compact.size();m.nodes=std::move(compact);stats.nodes_after+=m.nodes.size();
+    for(auto& n:compact)for(auto& operand:n.operands)operand=compact_map[operand];
+    for(auto& assignment:m.assignments)assignment.value=compact_map[assignment.value];
+    stats.dead_nodes_removed+=m.nodes.size()-compact.size();
+    m.nodes=std::move(compact);stats.nodes_after+=m.nodes.size();
 }
 }
 OptimizationResult RtlOptimizer::optimize(const RtlDesign& design) const{
