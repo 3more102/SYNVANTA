@@ -40,6 +40,8 @@ SystemVerilog -> Lexer -> Parser -> AST
                                   |
                          Typed RTL IR
                                   |
+             Constant folding + CSE + output-cone DCE
+                                  |
                        Boolean network
                                   |
                     Logic optimization
