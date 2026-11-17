@@ -1,4 +1,5 @@
 #include "synvanta/optimizer.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <charconv>
@@ -8,152 +9,457 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
+
 namespace synvanta {
 namespace {
-std::uint64_t mask_for(std::uint32_t width){
-    if(width>=64)return std::numeric_limits<std::uint64_t>::max();
-    if(width==0)return 0;
-    return (std::uint64_t{1}<<width)-1;
+
+std::uint64_t mask_for(std::uint32_t width) {
+    if (width >= 64) return std::numeric_limits<std::uint64_t>::max();
+    if (width == 0) return 0;
+    return (std::uint64_t{1} << width) - 1;
 }
-std::optional<std::uint64_t> parse_value(const RtlNode& node){
-    if(node.width>64)return std::nullopt;
-    std::string s;for(char c:node.literal)if(c!='_')s.push_back(c);
-    const auto apos=s.find(static_cast<char>(39));
-    if(apos==std::string::npos){
-        std::uint64_t v=0;const auto r=std::from_chars(s.data(),s.data()+s.size(),v,10);
-        if(r.ec!=std::errc{}||r.ptr!=s.data()+s.size())return std::nullopt;
-        return v&mask_for(node.width);
+
+std::optional<std::uint64_t> parse_value(const RtlNode& node) {
+    if (node.width > 64) return std::nullopt;
+
+    std::string value;
+    value.reserve(node.literal.size());
+    for (const char ch : node.literal) {
+        if (ch != '_') value.push_back(ch);
     }
-    if(apos==0){if(s.size()!=2)return std::nullopt;if(s[1]=='0')return 0;if(s[1]=='1')return 1;return std::nullopt;}
-    std::size_t p=apos+1;if(p<s.size()&&(s[p]=='s'||s[p]=='S'))++p;if(p>=s.size())return std::nullopt;
-    const char b=s[p++];int base=10;
-    if(b=='b'||b=='B')base=2;else if(b=='o'||b=='O')base=8;else if(b=='h'||b=='H')base=16;else if(b!='d'&&b!='D')return std::nullopt;
-    std::uint64_t v=0;const auto r=std::from_chars(s.data()+static_cast<std::ptrdiff_t>(p),s.data()+s.size(),v,base);
-    if(r.ec!=std::errc{}||r.ptr!=s.data()+s.size())return std::nullopt;
-    return v&mask_for(node.width);
-}
-std::int64_t signed_value(std::uint64_t v,std::uint32_t width){
-    const auto mask=mask_for(width);v&=mask;
-    if(width>0&&width<64&&(v&(std::uint64_t{1}<<(width-1)))!=0)v|=~mask;
-    return std::bit_cast<std::int64_t>(v);
-}
-std::string format_constant(std::uint32_t width,std::uint64_t value){
-    std::ostringstream out;out<<width<<"'h"<<std::hex<<std::uppercase<<(value&mask_for(width));return out.str();
-}
-std::optional<std::uint64_t> evaluate(const RtlNode& n,const std::vector<RtlNode>& nodes,
-                                      const std::vector<std::optional<std::uint64_t>>& values){
-    if(n.width>64)return std::nullopt;
-    if(n.op==RtlOp::Constant)return parse_value(n);
-    if(n.op==RtlOp::Input)return std::nullopt;
-    std::vector<std::uint64_t> a;
-    for(auto id:n.operands){if(id>=values.size()||!values[id])return std::nullopt;a.push_back(*values[id]);}
-    const auto mask=mask_for(n.width);
-    if(n.op==RtlOp::Resize&&a.size()==1){
-        const auto id=n.operands[0];if(id>=nodes.size()||nodes[id].width>64)return std::nullopt;
-        const auto& src=nodes[id];auto v=a[0]&mask_for(src.width);
-        if(n.width>src.width&&src.is_signed&&src.width>0&&src.width<64&&(v&(std::uint64_t{1}<<(src.width-1)))!=0)v|=~mask_for(src.width);
-        return v&mask;
+
+    const auto apostrophe = value.find(static_cast<char>(39));
+    if (apostrophe == std::string::npos) {
+        std::uint64_t parsed = 0;
+        const auto result = std::from_chars(
+            value.data(), value.data() + value.size(), parsed, 10);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
+            return std::nullopt;
+        return parsed & mask_for(node.width);
     }
-    if(a.size()==1){
-        const auto id=n.operands[0];if(id>=nodes.size())return std::nullopt;
-        const auto v=a[0]&mask_for(nodes[id].width);
-        switch(n.op){
-        case RtlOp::UnaryPlus:return v&mask;
-        case RtlOp::Negate:return (std::uint64_t{0}-v)&mask;
-        case RtlOp::BitNot:return (~v)&mask;
-        case RtlOp::LogicalNot:return v==0?1:0;
-        case RtlOp::ReduceNand:return v==mask_for(nodes[id].width)?0:1;
-        case RtlOp::ReduceNor:return v==0?1:0;
-        case RtlOp::ReduceXnor:return (std::popcount(v)%2U)==0U?1:0;
-        default:return std::nullopt;
+
+    // Unbased unsized fill literals are rejected by RTL lowering because their
+    // value depends on the surrounding expression context.
+    if (apostrophe == 0) return std::nullopt;
+
+    std::size_t position = apostrophe + 1;
+    if (position < value.size() &&
+        (value[position] == 's' || value[position] == 'S')) {
+        ++position;
+    }
+    if (position >= value.size()) return std::nullopt;
+
+    const char base_character = value[position++];
+    int base = 10;
+    if (base_character == 'b' || base_character == 'B') base = 2;
+    else if (base_character == 'o' || base_character == 'O') base = 8;
+    else if (base_character == 'h' || base_character == 'H') base = 16;
+    else if (base_character != 'd' && base_character != 'D') return std::nullopt;
+
+    std::uint64_t parsed = 0;
+    const auto result = std::from_chars(
+        value.data() + position, value.data() + value.size(), parsed, base);
+    if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
+        return std::nullopt;
+    return parsed & mask_for(node.width);
+}
+
+std::int64_t signed_value(std::uint64_t value, std::uint32_t width) {
+    const auto mask = mask_for(width);
+    value &= mask;
+    if (width > 0 && width < 64 &&
+        (value & (std::uint64_t{1} << (width - 1))) != 0) {
+        value |= ~mask;
+    }
+    return std::bit_cast<std::int64_t>(value);
+}
+
+std::string format_constant(std::uint32_t width, std::uint64_t value) {
+    std::ostringstream output;
+    output << width << "'h" << std::hex << std::uppercase
+           << (value & mask_for(width));
+    return output.str();
+}
+
+std::optional<std::uint64_t> evaluate(
+    const RtlNode& node,
+    const std::vector<RtlNode>& nodes,
+    const std::vector<std::optional<std::uint64_t>>& values) {
+    if (node.width > 64) return std::nullopt;
+    if (node.op == RtlOp::Constant) return parse_value(node);
+    if (node.op == RtlOp::Input) return std::nullopt;
+
+    std::vector<std::uint64_t> operands;
+    operands.reserve(node.operands.size());
+    for (const auto id : node.operands) {
+        if (static_cast<std::size_t>(id) >= values.size() || !values[id])
+            return std::nullopt;
+        operands.push_back(*values[id]);
+    }
+
+    const auto result_mask = mask_for(node.width);
+    if (node.op == RtlOp::Resize && operands.size() == 1) {
+        const auto source_id = node.operands[0];
+        if (static_cast<std::size_t>(source_id) >= nodes.size() ||
+            nodes[source_id].width > 64) {
+            return std::nullopt;
+        }
+        const auto& source = nodes[source_id];
+        auto value = operands[0] & mask_for(source.width);
+        if (node.width > source.width && source.is_signed &&
+            source.width > 0 && source.width < 64 &&
+            (value & (std::uint64_t{1} << (source.width - 1))) != 0) {
+            value |= ~mask_for(source.width);
+        }
+        return value & result_mask;
+    }
+
+    if (operands.size() == 1) {
+        const auto source_id = node.operands[0];
+        if (static_cast<std::size_t>(source_id) >= nodes.size()) return std::nullopt;
+        const auto value = operands[0] & mask_for(nodes[source_id].width);
+        switch (node.op) {
+        case RtlOp::UnaryPlus: return value & result_mask;
+        case RtlOp::Negate: return (std::uint64_t{0} - value) & result_mask;
+        case RtlOp::BitNot: return (~value) & result_mask;
+        case RtlOp::LogicalNot: return value == 0 ? 1 : 0;
+        case RtlOp::ReduceNand:
+            return value == mask_for(nodes[source_id].width) ? 0 : 1;
+        case RtlOp::ReduceNor: return value == 0 ? 1 : 0;
+        case RtlOp::ReduceXnor:
+            return (static_cast<unsigned>(std::popcount(value)) & 1U) == 0U ? 1 : 0;
+        default: return std::nullopt;
         }
     }
-    if(a.size()==2){
-        const auto li=n.operands[0],ri=n.operands[1];if(li>=nodes.size()||ri>=nodes.size())return std::nullopt;
-        const auto lw=nodes[li].width,rw=nodes[ri].width;
-        const auto l=a[0]&mask_for(lw),r=a[1]&mask_for(rw);
-        const bool sign=nodes[li].is_signed&&nodes[ri].is_signed;
-        switch(n.op){
-        case RtlOp::Add:return (l+r)&mask;
-        case RtlOp::Subtract:return (l-r)&mask;
-        case RtlOp::Multiply:return (l*r)&mask;
+
+    if (operands.size() == 2) {
+        const auto left_id = node.operands[0];
+        const auto right_id = node.operands[1];
+        if (static_cast<std::size_t>(left_id) >= nodes.size() ||
+            static_cast<std::size_t>(right_id) >= nodes.size()) {
+            return std::nullopt;
+        }
+
+        const auto left_width = nodes[left_id].width;
+        const auto right_width = nodes[right_id].width;
+        const auto left = operands[0] & mask_for(left_width);
+        const auto right = operands[1] & mask_for(right_width);
+        const bool is_signed = nodes[left_id].is_signed && nodes[right_id].is_signed;
+
+        switch (node.op) {
+        case RtlOp::Add: return (left + right) & result_mask;
+        case RtlOp::Subtract: return (left - right) & result_mask;
+        case RtlOp::Multiply: return (left * right) & result_mask;
         case RtlOp::Divide:
-            if(r==0)return std::nullopt;
-            if(sign){const auto x=signed_value(l,lw),y=signed_value(r,rw);if(x==std::numeric_limits<std::int64_t>::min()&&y==-1)return std::nullopt;return static_cast<std::uint64_t>(x/y)&mask;}
-            return (l/r)&mask;
+            if (right == 0) return std::nullopt;
+            if (is_signed) {
+                const auto lhs = signed_value(left, left_width);
+                const auto rhs = signed_value(right, right_width);
+                if (lhs == std::numeric_limits<std::int64_t>::min() && rhs == -1)
+                    return std::nullopt;
+                return static_cast<std::uint64_t>(lhs / rhs) & result_mask;
+            }
+            return (left / right) & result_mask;
         case RtlOp::Modulo:
-            if(r==0)return std::nullopt;
-            if(sign){const auto x=signed_value(l,lw),y=signed_value(r,rw);if(x==std::numeric_limits<std::int64_t>::min()&&y==-1)return std::nullopt;return static_cast<std::uint64_t>(x%y)&mask;}
-            return (l%r)&mask;
-        case RtlOp::BitAnd:return (l&r)&mask;
-        case RtlOp::BitOr:return (l|r)&mask;
-        case RtlOp::BitXor:return (l^r)&mask;
-        case RtlOp::BitXnor:return (~(l^r))&mask;
-        case RtlOp::LogicalAnd:return l!=0&&r!=0?1:0;
-        case RtlOp::LogicalOr:return l!=0||r!=0?1:0;
-        case RtlOp::Equal:return l==r?1:0;
-        case RtlOp::NotEqual:return l!=r?1:0;
-        case RtlOp::Less:return sign?(signed_value(l,lw)<signed_value(r,rw)?1:0):(l<r?1:0);
-        case RtlOp::LessEqual:return sign?(signed_value(l,lw)<=signed_value(r,rw)?1:0):(l<=r?1:0);
-        case RtlOp::Greater:return sign?(signed_value(l,lw)>signed_value(r,rw)?1:0):(l>r?1:0);
-        case RtlOp::GreaterEqual:return sign?(signed_value(l,lw)>=signed_value(r,rw)?1:0):(l>=r?1:0);
-        case RtlOp::ShiftLeft:return r>=n.width?0:(l<<r)&mask;
-        case RtlOp::ShiftRight:return r>=n.width?0:(l>>r)&mask;
-        default:return std::nullopt;
+            if (right == 0) return std::nullopt;
+            if (is_signed) {
+                const auto lhs = signed_value(left, left_width);
+                const auto rhs = signed_value(right, right_width);
+                if (lhs == std::numeric_limits<std::int64_t>::min() && rhs == -1)
+                    return std::nullopt;
+                return static_cast<std::uint64_t>(lhs % rhs) & result_mask;
+            }
+            return (left % right) & result_mask;
+        case RtlOp::BitAnd: return (left & right) & result_mask;
+        case RtlOp::BitOr: return (left | right) & result_mask;
+        case RtlOp::BitXor: return (left ^ right) & result_mask;
+        case RtlOp::BitXnor: return (~(left ^ right)) & result_mask;
+        case RtlOp::LogicalAnd: return left != 0 && right != 0 ? 1 : 0;
+        case RtlOp::LogicalOr: return left != 0 || right != 0 ? 1 : 0;
+        case RtlOp::Equal: return left == right ? 1 : 0;
+        case RtlOp::NotEqual: return left != right ? 1 : 0;
+        case RtlOp::Less:
+            return is_signed
+                ? (signed_value(left, left_width) < signed_value(right, right_width) ? 1 : 0)
+                : (left < right ? 1 : 0);
+        case RtlOp::LessEqual:
+            return is_signed
+                ? (signed_value(left, left_width) <= signed_value(right, right_width) ? 1 : 0)
+                : (left <= right ? 1 : 0);
+        case RtlOp::Greater:
+            return is_signed
+                ? (signed_value(left, left_width) > signed_value(right, right_width) ? 1 : 0)
+                : (left > right ? 1 : 0);
+        case RtlOp::GreaterEqual:
+            return is_signed
+                ? (signed_value(left, left_width) >= signed_value(right, right_width) ? 1 : 0)
+                : (left >= right ? 1 : 0);
+        case RtlOp::ShiftLeft:
+        case RtlOp::ShiftRight:
+            // A negative signed shift amount produces an unknown result in
+            // SystemVerilog. Leave it untouched rather than folding it to zero.
+            if (nodes[right_id].is_signed &&
+                signed_value(right, right_width) < 0) {
+                return std::nullopt;
+            }
+            if (right >= node.width) return std::uint64_t{0};
+            if (node.op == RtlOp::ShiftLeft)
+                return (left << right) & result_mask;
+            return (left >> right) & result_mask;
+        default: return std::nullopt;
         }
     }
-    if(n.op==RtlOp::Mux&&a.size()==3)return (a[0]!=0?a[1]:a[2])&mask;
+
+    if (node.op == RtlOp::Mux && operands.size() == 3)
+        return (operands[0] != 0 ? operands[1] : operands[2]) & result_mask;
+
     return std::nullopt;
 }
-bool commutative(RtlOp op){
-    switch(op){
-    case RtlOp::Add:case RtlOp::Multiply:case RtlOp::BitAnd:case RtlOp::BitOr:
-    case RtlOp::BitXor:case RtlOp::BitXnor:case RtlOp::LogicalAnd:case RtlOp::LogicalOr:
-    case RtlOp::Equal:case RtlOp::NotEqual:return true;
-    default:return false;
+
+bool is_commutative(RtlOp op) {
+    switch (op) {
+    case RtlOp::Add:
+    case RtlOp::Multiply:
+    case RtlOp::BitAnd:
+    case RtlOp::BitOr:
+    case RtlOp::BitXor:
+    case RtlOp::BitXnor:
+    case RtlOp::LogicalAnd:
+    case RtlOp::LogicalOr:
+    case RtlOp::Equal:
+    case RtlOp::NotEqual:
+        return true;
+    default:
+        return false;
     }
 }
-std::string key_for(const RtlNode& n){
-    std::ostringstream out;out<<static_cast<int>(n.op)<<':'<<n.width<<':'<<n.is_signed<<':';
-    if(n.op==RtlOp::Input)out<<n.name;if(n.op==RtlOp::Constant)out<<n.literal;
-    for(auto v:n.operands)out<<':'<<v;return out.str();
+
+std::string key_for(const RtlNode& node) {
+    std::ostringstream key;
+    key << static_cast<unsigned>(node.op) << ':' << node.width << ':'
+        << node.is_signed << ':' << node.name.size() << ':' << node.name
+        << ':' << node.literal.size() << ':' << node.literal << ':';
+    if (node.op == RtlOp::Input && node.name.empty())
+        key << "anonymous-input@" << node.id << ':';
+    for (const auto operand : node.operands) key << operand << ',';
+    return key.str();
 }
-void optimize_module(RtlModule& m,OptimizationStats& stats){
-    stats.nodes_before+=m.nodes.size();
-    std::vector<std::optional<std::uint64_t>> constants(m.nodes.size());
-    for(auto& n:m.nodes){
-        const auto v=evaluate(n,m.nodes,constants);if(!v)continue;
-        if(n.op!=RtlOp::Constant)++stats.constants_folded;
-        n.op=RtlOp::Constant;n.operands.clear();n.name.clear();n.literal=format_constant(n.width,*v);constants[n.id]=*v;
-    }
-    std::vector<RtlNode> unique;std::vector<ValueId> remap(m.nodes.size(),0);
-    std::unordered_map<std::string,ValueId> seen;
-    for(const auto& original:m.nodes){
-        RtlNode n=original;for(auto& op:n.operands)op=remap[op];
-        if(commutative(n.op)&&n.operands.size()==2&&n.operands[0]>n.operands[1])std::swap(n.operands[0],n.operands[1]);
-        const auto key=key_for(n);const auto found=seen.find(key);
-        if(found!=seen.end()){remap[original.id]=found->second;++stats.common_subexpressions_removed;continue;}
-        n.id=static_cast<ValueId>(unique.size());remap[original.id]=n.id;seen.emplace(key,n.id);unique.push_back(std::move(n));
-    }
-    for(auto& a:m.assignments)a.value=remap[a.value];m.nodes=std::move(unique);
-    std::vector<bool> live(m.nodes.size(),false);
-    auto mark=[&](auto&& self,ValueId id)->void{
-        if(id>=m.nodes.size()||live[id])return;live[id]=true;for(auto op:m.nodes[id].operands)self(self,op);
-    };
-    for(const auto& a:m.assignments)mark(mark,a.value);
-    std::vector<ValueId> compact_map(m.nodes.size(),0);std::vector<RtlNode> compact;
-    for(std::size_t i=0;i<m.nodes.size();++i)if(live[i]){
-        compact_map[i]=static_cast<ValueId>(compact.size());auto n=m.nodes[i];n.id=compact_map[i];compact.push_back(std::move(n));
-    }
-    for(auto& n:compact)for(auto& op:n.operands)op=compact_map[op];
-    for(auto& a:m.assignments)a.value=compact_map[a.value];
-    stats.dead_nodes_removed+=m.nodes.size()-compact.size();m.nodes=std::move(compact);stats.nodes_after+=m.nodes.size();
+
+void add_error(
+    std::vector<Diagnostic>& diagnostics,
+    const std::string& code,
+    const std::string& message,
+    const SourceLocation& location) {
+    diagnostics.push_back(
+        Diagnostic{DiagnosticSeverity::Error, code, message, location});
 }
+
+bool optimize_module(
+    RtlModule& module,
+    OptimizationStats& stats,
+    std::vector<Diagnostic>& diagnostics) {
+    stats.nodes_before += module.nodes.size();
+    stats.assignments_before += module.assignments.size();
+
+    const auto invalid_id = std::numeric_limits<ValueId>::max();
+    for (std::size_t index = 0; index < module.nodes.size(); ++index) {
+        const auto& node = module.nodes[index];
+        if (static_cast<std::size_t>(node.id) != index) {
+            add_error(diagnostics, "OPT0001",
+                      "RTL node IDs must match their module-local vector indices",
+                      node.location);
+            return false;
+        }
+        if (node.width == 0) {
+            add_error(diagnostics, "OPT0008", "RTL node width must be positive",
+                      node.location);
+            return false;
+        }
+        for (const auto operand : node.operands) {
+            if (static_cast<std::size_t>(operand) >= index) {
+                add_error(diagnostics, "OPT0002",
+                          "RTL node operand must refer to an earlier node",
+                          node.location);
+                return false;
+            }
+        }
+    }
+
+    for (const auto& assignment : module.assignments) {
+        if (static_cast<std::size_t>(assignment.value) >= module.nodes.size()) {
+            add_error(diagnostics, "OPT0005",
+                      "RTL assignment references an invalid value ID", {});
+            return false;
+        }
+    }
+
+    std::vector<std::optional<std::uint64_t>> constants(module.nodes.size());
+    for (auto& node : module.nodes) {
+        const auto value = evaluate(node, module.nodes, constants);
+        if (!value) continue;
+        if (node.op != RtlOp::Constant) ++stats.constants_folded;
+        node.op = RtlOp::Constant;
+        node.operands.clear();
+        node.name.clear();
+        node.literal = format_constant(node.width, *value);
+        constants[node.id] = *value;
+    }
+
+    std::vector<RtlNode> unique_nodes;
+    unique_nodes.reserve(module.nodes.size());
+    std::vector<ValueId> canonical(module.nodes.size(), invalid_id);
+    std::unordered_map<std::string, ValueId> seen;
+    seen.reserve(module.nodes.size());
+
+    for (std::size_t index = 0; index < module.nodes.size(); ++index) {
+        RtlNode node = module.nodes[index];
+        for (auto& operand : node.operands) {
+            if (static_cast<std::size_t>(operand) >= index ||
+                canonical[operand] == invalid_id) {
+                add_error(diagnostics, "OPT0003",
+                          "RTL node references an invalid or unprocessed operand",
+                          module.nodes[index].location);
+                return false;
+            }
+            operand = canonical[operand];
+        }
+
+        bool simplified = false;
+        if (node.operands.size() == 1 && node.op == RtlOp::UnaryPlus) {
+            canonical[index] = node.operands[0];
+            simplified = true;
+        } else if (node.operands.size() == 1 && node.op == RtlOp::Resize) {
+            const auto& source = unique_nodes[node.operands[0]];
+            if (source.width == node.width &&
+                source.is_signed == node.is_signed) {
+                canonical[index] = node.operands[0];
+                simplified = true;
+            }
+        } else if (node.op == RtlOp::Mux && node.operands.size() == 3 &&
+                   node.operands[1] == node.operands[2]) {
+            canonical[index] = node.operands[1];
+            simplified = true;
+        }
+
+        if (simplified) {
+            ++stats.local_simplifications;
+            continue;
+        }
+
+        if (is_commutative(node.op) && node.operands.size() == 2 &&
+            node.operands[1] < node.operands[0]) {
+            std::swap(node.operands[0], node.operands[1]);
+        }
+
+        const auto key = key_for(node);
+        const auto found = seen.find(key);
+        if (found != seen.end()) {
+            canonical[index] = found->second;
+            ++stats.common_subexpressions_removed;
+            continue;
+        }
+
+        node.id = static_cast<ValueId>(unique_nodes.size());
+        canonical[index] = node.id;
+        seen.emplace(key, node.id);
+        unique_nodes.push_back(std::move(node));
+    }
+
+    for (auto& assignment : module.assignments)
+        assignment.value = canonical[assignment.value];
+
+    std::unordered_set<std::string> output_names;
+    for (const auto& port : module.ports) {
+        if (port.direction == PortDirection::Output)
+            output_names.insert(port.name);
+    }
+    const bool has_output_ports = !output_names.empty();
+
+    std::vector<RtlAssignment> observable_assignments;
+    observable_assignments.reserve(module.assignments.size());
+    std::vector<ValueId> pending;
+    pending.reserve(module.assignments.size());
+    for (const auto& assignment : module.assignments) {
+        if (!has_output_ports || output_names.find(assignment.target) != output_names.end()) {
+            observable_assignments.push_back(assignment);
+            pending.push_back(assignment.value);
+        }
+    }
+
+    std::vector<bool> live(unique_nodes.size(), false);
+    while (!pending.empty()) {
+        const auto id = pending.back();
+        pending.pop_back();
+        if (static_cast<std::size_t>(id) >= unique_nodes.size() || live[id])
+            continue;
+        live[id] = true;
+        for (const auto operand : unique_nodes[id].operands)
+            pending.push_back(operand);
+    }
+
+    const auto live_count = static_cast<std::size_t>(
+        std::count(live.begin(), live.end(), true));
+    std::vector<ValueId> compact_map(unique_nodes.size(), invalid_id);
+    std::vector<RtlNode> compact_nodes;
+    compact_nodes.reserve(live_count);
+
+    for (std::size_t index = 0; index < unique_nodes.size(); ++index) {
+        if (!live[index]) continue;
+        RtlNode node = unique_nodes[index];
+        for (auto& operand : node.operands) {
+            if (static_cast<std::size_t>(operand) >= compact_map.size() ||
+                compact_map[operand] == invalid_id) {
+                add_error(diagnostics, "OPT0006",
+                          "live RTL node depends on a removed or invalid node",
+                          node.location);
+                return false;
+            }
+            operand = compact_map[operand];
+        }
+        node.id = static_cast<ValueId>(compact_nodes.size());
+        compact_map[index] = node.id;
+        compact_nodes.push_back(std::move(node));
+    }
+
+    for (auto& assignment : observable_assignments) {
+        if (static_cast<std::size_t>(assignment.value) >= compact_map.size() ||
+            compact_map[assignment.value] == invalid_id) {
+            add_error(diagnostics, "OPT0007",
+                      "observable assignment lost its value during dead-code elimination",
+                      {});
+            return false;
+        }
+        assignment.value = compact_map[assignment.value];
+    }
+
+    stats.nodes_after_cse += unique_nodes.size();
+    stats.dead_nodes_removed += unique_nodes.size() - compact_nodes.size();
+    stats.assignments_removed +=
+        module.assignments.size() - observable_assignments.size();
+    stats.assignments_after += observable_assignments.size();
+    stats.nodes_after += compact_nodes.size();
+
+    module.nodes = std::move(compact_nodes);
+    module.assignments = std::move(observable_assignments);
+    return true;
 }
-OptimizationResult RtlOptimizer::optimize(const RtlDesign& design) const{
-    OptimizationResult result;result.design=design;
-    for(auto& m:result.design.modules)optimize_module(m,result.stats);
+
+} // namespace
+
+OptimizationResult RtlOptimizer::optimize(const RtlDesign& design) const {
+    OptimizationResult result;
+    result.design = design;
+
+    for (auto& module : result.design.modules) {
+        RtlModule original = module;
+        if (!optimize_module(module, result.stats, result.diagnostics))
+            module = std::move(original);
+    }
+
     return result;
 }
+
 } // namespace synvanta
