@@ -222,3 +222,50 @@ TEST_CASE(aig_reports_unsupported_division_and_unknown_constants) {
         unknown_reported = unknown_reported || diagnostic.code == "AIG0004";
     REQUIRE(unknown_reported);
 }
+
+TEST_CASE(aig_optimizer_balances_and_chain_and_preserves_all_truth_table_rows) {
+    const auto built = compile_to_aig(
+        "module and8(input logic a,input logic b,input logic c,input logic d,"
+        "input logic e,input logic f,input logic g,input logic h,output logic y);"
+        "assign y=a&b&c&d&e&f&g&h; endmodule");
+    REQUIRE(built.success());
+    const auto& before = built.design.modules.front();
+
+    const synvanta::AigOptimizer optimizer;
+    const auto optimized = optimizer.optimize(built.design);
+    REQUIRE(optimized.success());
+    REQUIRE(optimized.design.modules.size() == 1);
+    REQUIRE(optimized.stats.depth_after < optimized.stats.depth_before);
+
+    const auto& after = optimized.design.modules.front();
+    for (std::uint32_t pattern = 0; pattern < 256; ++pattern) {
+        std::vector<bool> inputs(8, false);
+        for (std::uint32_t bit = 0; bit < 8; ++bit)
+            inputs[bit] = ((pattern >> bit) & 1U) != 0U;
+        const auto expected = pattern == 0xFFU;
+        REQUIRE(evaluate_outputs(before, inputs)[0] == expected);
+        REQUIRE(evaluate_outputs(after, inputs)[0] == expected);
+    }
+}
+
+TEST_CASE(aig_optimizer_preserves_complemented_edges_and_mux_logic) {
+    const auto built = compile_to_aig(
+        "module mixed(input logic a,input logic b,input logic c,input logic d,"
+        "input logic sel,output logic y);"
+        "assign y=sel?~(a&b):(c|d); endmodule");
+    REQUIRE(built.success());
+
+    const synvanta::AigOptimizer optimizer;
+    const auto optimized = optimizer.optimize(built.design);
+    REQUIRE(optimized.success());
+    const auto& before = built.design.modules.front();
+    const auto& after = optimized.design.modules.front();
+
+    for (std::uint32_t pattern = 0; pattern < 32; ++pattern) {
+        std::vector<bool> inputs(5, false);
+        for (std::uint32_t bit = 0; bit < 5; ++bit)
+            inputs[bit] = ((pattern >> bit) & 1U) != 0U;
+        REQUIRE(evaluate_outputs(before, inputs)[0] ==
+                evaluate_outputs(after, inputs)[0]);
+    }
+}
