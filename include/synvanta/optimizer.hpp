@@ -11,6 +11,7 @@ struct OptimizationStats {
     std::size_t muxes_simplified{0};
     std::size_t common_subexpressions_removed{0};
     std::size_t dead_nodes_removed{0};
+    std::size_t assignments_removed{0};
 };
 struct OptimizationResult {
     RtlDesign design;
