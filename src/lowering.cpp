@@ -82,10 +82,7 @@ public:
         for(const auto& a:source_.assignments){
             const auto target=signals_.find(a.lhs);if(target==signals_.end())continue;
             auto value=lower_expr(a.rhs.get());if(!value)continue;
-            if(value->width!=target->second.width||value->is_signed!=target->second.is_signed){
-                const auto id=add_node(RtlOp::Resize,target->second.width,target->second.is_signed,{value->id},{},a.lhs,a.location);
-                value=LoweredValue{id,target->second.width,target->second.is_signed};
-            }
+            value=resize_value(*value,target->second.width,target->second.is_signed,a.location);
             result.assignments.push_back({a.lhs,value->id,target->second.width,target->second.is_signed});
             values_[a.lhs]=*value;states_[a.lhs]=VisitState::Complete;
         }
@@ -112,6 +109,11 @@ private:
         const auto id=static_cast<ValueId>(module_->nodes.size());
         module_->nodes.push_back({id,op,width,sign,std::move(operands),std::move(literal),std::move(name),loc});return id;
     }
+    LoweredValue resize_value(LoweredValue value,std::uint32_t width,bool sign,const SourceLocation& loc){
+        if(value.width==width&&value.is_signed==sign)return value;
+        const auto id=add_node(RtlOp::Resize,width,sign,{value.id},{},{},loc);
+        return LoweredValue{id,width,sign};
+    }
     std::optional<LoweredValue> resolve(const Expr& e){
         const auto cached=values_.find(e.text);if(cached!=values_.end())return cached->second;
         const auto signal=signals_.find(e.text);
@@ -122,10 +124,7 @@ private:
         if(driver==drivers_.end()){report(DiagnosticSeverity::Error,"LOW0004","signal '"+e.text+"' has no source or continuous driver",e.location);return std::nullopt;}
         states_[e.text]=VisitState::Visiting;
         auto value=lower_expr(driver->second->rhs.get());if(!value)return std::nullopt;
-        if(value->width!=signal->second.width||value->is_signed!=signal->second.is_signed){
-            const auto id=add_node(RtlOp::Resize,signal->second.width,signal->second.is_signed,{value->id},{},e.text,e.location);
-            value=LoweredValue{id,signal->second.width,signal->second.is_signed};
-        }
+        value=resize_value(*value,signal->second.width,signal->second.is_signed,e.location);
         values_[e.text]=*value;states_[e.text]=VisitState::Complete;return value;
     }
     std::optional<LoweredValue> lower_expr(const Expr* e){
@@ -147,13 +146,16 @@ private:
             auto l=lower_expr(e->lhs.get());auto r=lower_expr(e->rhs.get());const auto op=binary_op(e->op);
             if(!l||!r||!op){report(DiagnosticSeverity::Error,"LOW0007","unsupported binary operator",e->location);return std::nullopt;}
             std::uint32_t w=std::max(l->width,r->width);bool sign=l->is_signed&&r->is_signed;
-            if(one_bit(*op)){w=1;sign=false;}else if(*op==RtlOp::ShiftLeft||*op==RtlOp::ShiftRight){w=l->width;sign=l->is_signed;}
+            if(*op==RtlOp::LogicalAnd||*op==RtlOp::LogicalOr){w=1;sign=false;}
+            else if(*op==RtlOp::ShiftLeft||*op==RtlOp::ShiftRight){w=l->width;sign=l->is_signed;}
+            else{l=resize_value(*l,w,sign,e->location);r=resize_value(*r,w,sign,e->location);if(one_bit(*op)){w=1;sign=false;}}
             const auto id=add_node(*op,w,sign,{l->id,r->id},{},{},e->location);return LoweredValue{id,w,sign};
         }
         if(e->kind==ExprKind::Conditional){
             auto c=lower_expr(e->lhs.get());auto y=lower_expr(e->rhs.get());auto n=lower_expr(e->third.get());
             if(!c||!y||!n)return std::nullopt;
             const auto w=std::max(y->width,n->width);const bool sign=y->is_signed&&n->is_signed;
+            y=resize_value(*y,w,sign,e->location);n=resize_value(*n,w,sign,e->location);
             const auto id=add_node(RtlOp::Mux,w,sign,{c->id,y->id,n->id},{},{},e->location);return LoweredValue{id,w,sign};
         }
         report(DiagnosticSeverity::Error,"LOW0008","unsupported expression kind",e->location);return std::nullopt;

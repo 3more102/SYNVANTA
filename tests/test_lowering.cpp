@@ -41,3 +41,10 @@ TEST_CASE(lowering_preserves_signed_port_metadata){
  const synvanta::Compiler c;const auto parsed=c.compile(s,"signed.sv");const synvanta::RtlLowerer l;const auto r=l.lower(parsed.unit);REQUIRE(r.success());
  REQUIRE(r.design.modules[0].ports[0].is_signed);REQUIRE(r.design.modules[0].ports[1].is_signed);
 }
+
+TEST_CASE(lowering_normalizes_binary_operand_widths){
+ const std::string s="module add_mixed(input logic [7:0] a,input logic b,output logic [7:0] y);assign y=a+b;endmodule";
+ const synvanta::Compiler c;const auto parsed=c.compile(s,"add_mixed.sv");const synvanta::RtlLowerer l;const auto r=l.lower(parsed.unit);REQUIRE(r.success());
+ const auto& n=r.design.modules[0].nodes;REQUIRE(n.size()==4);REQUIRE(n[2].op==synvanta::RtlOp::Resize);
+ REQUIRE(n[2].width==8);REQUIRE(n[3].op==synvanta::RtlOp::Add);REQUIRE(n[3].operands[0]==0);REQUIRE(n[3].operands[1]==2);
+}
