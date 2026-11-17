@@ -35,7 +35,19 @@ int run(const std::string& command,const std::string& path){
             const auto aig=builder.build(optimized.design);
             for(const auto& d:aig.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
             if(!aig.success())return 1;
-            std::cout<<synvanta::dump_aig_design(aig.design);
+
+            const synvanta::AigOptimizer aig_optimizer;
+            const auto balanced=aig_optimizer.optimize(aig.design);
+            for(const auto& d:balanced.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
+            if(!balanced.success())return 1;
+
+            std::cout<<"# AIG optimization: nodes="<<balanced.stats.nodes_before
+                     <<"->"<<balanced.stats.nodes_after
+                     <<" ANDs="<<balanced.stats.and_nodes_before
+                     <<"->"<<balanced.stats.and_nodes_after
+                     <<" depth="<<balanced.stats.depth_before
+                     <<"->"<<balanced.stats.depth_after<<'\n';
+            std::cout<<synvanta::dump_aig_design(balanced.design);
             return 0;
         }
         std::cout<<"# optimization: folded="<<optimized.stats.constants_folded
@@ -49,7 +61,8 @@ int run(const std::string& command,const std::string& path){
         std::cout<<"module "<<m.name<<"\n  ports: "<<m.ports.size()<<'\n';
         for(const auto& p:m.ports){
             std::cout<<"    "<<synvanta::port_direction_name(p.direction)<<' '<<synvanta::net_kind_name(p.net_kind)<<' ';
-            if(p.is_signed)std::cout<<"signed ";if(p.range)std::cout<<'['<<p.range->left<<':'<<p.range->right<<"] ";
+            if(p.is_signed)std::cout<<"signed ";
+            if(p.range)std::cout<<'['<<p.range->left<<':'<<p.range->right<<"] ";
             std::cout<<p.name<<'\n';
         }
         std::cout<<"  continuous assignments: "<<m.assignments.size()<<'\n';
