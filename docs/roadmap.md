@@ -7,17 +7,18 @@
 - [x] SystemVerilog lexer for the initial subset.
 - [x] Module/port/continuous-assignment AST.
 - [x] Pratt expression parser.
-- [x] CLI `check` and `inspect` commands.
+- [x] CLI check and inspect commands.
 - [x] Unit tests and CI workflow.
 - [x] Module-local symbol table and basic semantic diagnostics.
 
 ## Phase 1 — Language semantics and elaboration
 
 - [x] Module-local symbol table and duplicate/undeclared identifier checks.
+- [x] Parse unbased unsized literals and preserve '0/'1 context-fill semantics in resize evaluation.
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
 - [ ] Bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.
-- [ ] `always_comb` and synthesizable procedural assignment lowering.
+- [ ] always_comb and synthesizable procedural assignment lowering.
 - [ ] Versioned supported-SystemVerilog specification.
 
 ## Phase 2 — Technology-independent RTL IR
@@ -29,7 +30,9 @@
 - [x] Reject multi-driver wire nets and undriven outputs at the RTL-lowering boundary.
 - [x] Deterministic textual IR dump and lowering regression tests.
 - [x] Initial constant folding for supported two-state operations up to 64 bits.
-- [x] Common-subexpression elimination and dead-node removal.
+- [x] Common-subexpression elimination with canonical operand ordering.
+- [x] Output-observability-rooted dead-node removal and internal assignment cleanup.
+- [x] Validate IR IDs, operation arity, topological operands, and assignment references before optimization.
 - [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
 - [ ] Lower procedural assignments and sequential processes into the IR.
 - [ ] Broader bit-level constant propagation and rewrite passes.
@@ -65,4 +68,4 @@
 
 ## Current release boundary
 
-Version 0.1 is a parser bring-up milestone only. It is not yet a synthesis tool and does not produce optimized or technology-mapped netlists.
+Version 0.1 is an early compiler milestone. It parses a documented RTL subset, performs module-local semantic checks, lowers supported continuous assignments into typed RTL IR, and provides initial constant folding and graph cleanup. It does not yet synthesize procedural RTL or produce technology-mapped standard-cell netlists.
