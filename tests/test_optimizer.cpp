@@ -47,3 +47,41 @@ TEST_CASE(optimizer_uses_signed_comparison_semantics){
  REQUIRE(r.design.modules[0].nodes.size()==1);REQUIRE(r.design.modules[0].nodes[0].op==synvanta::RtlOp::Constant);
  REQUIRE(r.design.modules[0].nodes[0].literal=="1'h1");
 }
+TEST_CASE(optimizer_removes_unobservable_internal_assignment_logic) {
+ const auto d=lower_source("module dead_logic(input logic a,input logic b,output logic y);logic unused;assign unused=a&b;assign y=a|b;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ const auto& m=r.design.modules[0];
+ REQUIRE(r.stats.dead_nodes_removed==1);REQUIRE(r.stats.assignments_removed==1);
+ REQUIRE(m.nodes.size()==3);REQUIRE(m.assignments.size()==1);REQUIRE(m.assignments[0].target=="y");
+}
+TEST_CASE(optimizer_preserves_internal_dependencies_of_outputs) {
+ const auto d=lower_source("module chain(input logic a,input logic b,output logic y);logic temp;assign temp=a^b;assign y=temp&a;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ const auto& m=r.design.modules[0];
+ REQUIRE(m.nodes.size()==4);REQUIRE(m.nodes[2].op==synvanta::RtlOp::BitXor);REQUIRE(m.nodes[3].op==synvanta::RtlOp::BitAnd);
+ REQUIRE(m.assignments.size()==1);REQUIRE(m.assignments[0].target=="y");
+}
+TEST_CASE(optimizer_keeps_all_assignments_when_module_has_no_outputs) {
+ const auto d=lower_source("module sink(input logic a);logic temp;assign temp=~a;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ REQUIRE(r.design.modules[0].assignments.size()==1);REQUIRE(r.design.modules[0].assignments[0].target=="temp");
+ REQUIRE(r.design.modules[0].nodes.size()==2);
+}
+TEST_CASE(optimizer_expands_unbased_unsized_one_to_context_width) {
+ const auto d=lower_source("module fill(output logic [7:0] y);assign y='1;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ REQUIRE(r.design.modules[0].nodes.size()==1);REQUIRE(r.design.modules[0].nodes[0].literal=="8'hFF");
+}
+TEST_CASE(optimizer_expands_unbased_unsized_zero_to_context_width) {
+ const auto d=lower_source("module fill(output logic [7:0] y);assign y='0;endmodule");
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
+ REQUIRE(r.design.modules[0].nodes.size()==1);REQUIRE(r.design.modules[0].nodes[0].literal=="8'h0");
+}
+TEST_CASE(optimizer_rejects_non_topological_rtl_graphs) {
+ synvanta::RtlDesign d;synvanta::RtlModule m;m.name="invalid";
+ m.ports.push_back({"y",synvanta::PortDirection::Output,1,false});
+ synvanta::RtlNode n;n.id=0;n.op=synvanta::RtlOp::BitAnd;n.width=1;n.operands={1,1};
+ m.nodes.push_back(n);m.assignments.push_back({"y",0,1,false});d.modules.push_back(m);
+ const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(!r.success());
+ REQUIRE(r.diagnostics.size()==1);REQUIRE(r.diagnostics[0].code=="OPT0004");
+}
