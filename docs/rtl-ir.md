@@ -52,3 +52,6 @@ synvanta ir examples/half_adder.sv
 ```
 
 The textual dump is intended for debugging and regression tests. The initial optimizer consumes this in-memory IR and performs constant folding, common-subexpression elimination, and dead-node removal. A stable machine-readable serialization format will be defined separately before external tools depend on it.
+
+
+The RTL lowerer rejects unbased unsized fill literals ('0 and '1) until context-determined width propagation is implemented. It also leaves constant shifts with a negative signed shift amount unfolded rather than replacing their unknown result with zero.
