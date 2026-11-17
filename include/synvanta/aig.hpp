@@ -80,6 +80,32 @@ public:
     AigBuildResult build(const RtlDesign& design) const;
 };
 
+struct AigOptimizationStats {
+    std::size_t nodes_before{0};
+    std::size_t nodes_after{0};
+    std::size_t and_nodes_before{0};
+    std::size_t and_nodes_after{0};
+    std::uint32_t depth_before{0};
+    std::uint32_t depth_after{0};
+};
+
+struct AigOptimizationResult {
+    AigDesign design;
+    AigOptimizationStats stats;
+    std::vector<Diagnostic> diagnostics;
+
+    bool success() const noexcept {
+        return !has_errors(diagnostics);
+    }
+};
+
+class AigOptimizer {
+public:
+    // Rebuilds the AIG with structurally hashed, balanced positive-AND trees and
+    // removes nodes that are not reachable from primary outputs.
+    AigOptimizationResult optimize(const AigDesign& design) const;
+};
+
 std::string dump_aig_design(const AigDesign& design);
 
 } // namespace synvanta
