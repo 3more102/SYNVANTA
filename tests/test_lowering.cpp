@@ -76,3 +76,26 @@ TEST_CASE(lowering_rejects_undriven_output_ports) {
     for (const auto& diagnostic : lowered.diagnostics) found = found || diagnostic.code == "LOW0010";
     REQUIRE(found);
 }
+
+TEST_CASE(lowering_preserves_unbased_unsized_fill_literal_semantics) {
+    const std::string source =
+        "module fill_one(output logic [7:0] y); assign y='1; endmodule "
+        "module fill_zero(output logic [7:0] y); assign y='0; endmodule";
+    const synvanta::Compiler compiler;
+    const auto parsed = compiler.compile(source, "fill_literals.sv");
+    REQUIRE(parsed.success());
+
+    const synvanta::RtlLowerer lowerer;
+    const auto lowered = lowerer.lower(parsed.unit);
+    REQUIRE(lowered.success());
+    REQUIRE(lowered.design.modules.size() == 2);
+
+    const auto& one_nodes = lowered.design.modules[0].nodes;
+    const auto& zero_nodes = lowered.design.modules[1].nodes;
+    REQUIRE(one_nodes[0].op == synvanta::RtlOp::Constant);
+    REQUIRE(one_nodes[0].literal == "'1");
+    REQUIRE(one_nodes[0].is_signed);
+    REQUIRE(zero_nodes[0].op == synvanta::RtlOp::Constant);
+    REQUIRE(zero_nodes[0].literal == "'0");
+    REQUIRE(!zero_nodes[0].is_signed);
+}
