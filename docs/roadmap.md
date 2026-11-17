@@ -7,7 +7,7 @@
 - [x] SystemVerilog lexer for the initial subset.
 - [x] Module/port/continuous-assignment AST.
 - [x] Pratt expression parser.
-- [x] CLI `check` and `inspect` commands.
+- [x] CLI check and inspect commands.
 - [x] Unit tests and CI workflow.
 - [x] Module-local symbol table and basic semantic diagnostics.
 
@@ -15,9 +15,9 @@
 
 - [x] Module-local symbol table and duplicate/undeclared identifier checks.
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
-- [ ] Bit widths, signedness, casts, and expression sizing rules.
+- [ ] Complete bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.
-- [ ] `always_comb` and synthesizable procedural assignment lowering.
+- [ ] always_comb and synthesizable procedural assignment lowering.
 - [ ] Versioned supported-SystemVerilog specification.
 
 ## Phase 2 — Technology-independent RTL IR
@@ -27,14 +27,17 @@
 - [x] Insert explicit resize nodes for assignment width/signedness conversion.
 - [x] Detect combinational dependency cycles during lowering.
 - [x] Deterministic textual IR dump and lowering regression tests.
+- [x] Common-subexpression elimination with canonical operand ordering.
+- [x] Dead-code elimination rooted at observable output assignments.
+- [x] Local identities for redundant resize, unary plus, duplicate bitwise operands, and identical mux branches.
+- [ ] General constant propagation and arithmetic constant folding.
 - [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
 - [ ] Lower procedural assignments and sequential processes into the IR.
-- [ ] Constant propagation, dead-code elimination, and common-subexpression elimination.
 
 ## Phase 3 — Boolean network and optimization
 
 - [ ] Lower combinational RTL into an AIG or equivalent Boolean network.
-- [ ] Structural hashing and rewriting.
+- [ ] Structural hashing and rewriting across multiple logic levels.
 - [ ] Observability-based cleanup and sequential boundary modelling.
 - [ ] Equivalence-oriented regression tests.
 
@@ -62,4 +65,4 @@
 
 ## Current release boundary
 
-Version 0.1 is a parser bring-up milestone only. It is not yet a synthesis tool and does not produce optimized or technology-mapped netlists.
+Version 0.1 remains an early compiler milestone. It parses a documented RTL subset, performs module-local semantic checks, lowers continuous assignments into typed RTL IR, and provides basic graph optimization. It does not yet synthesize procedural RTL or produce technology-mapped standard-cell netlists.
