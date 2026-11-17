@@ -13,7 +13,7 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
                          Typed RTL IR
                                   |
-                     RTL graph optimization
+                 RTL graph optimization (CSE/DCE)
                                   |
                       Bit-level AIG network
                                   |
@@ -30,7 +30,7 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
 
 The frontend currently supports a documented subset centered on ANSI-style modules and continuous assignments. The typed RTL IR preserves operation widths, signedness metadata, and source locations. The optimizer performs local identity reductions, structural common-subexpression elimination, and output-rooted dead-code elimination.
 
-The initial AIG backend bit-blasts the supported combinational subset into input nodes and structurally hashed AND nodes with complemented edges. It explicitly rejects unsupported arithmetic operators and unknown four-state constants.
+The AIG backend bit-blasts supported combinational operations into primary-input nodes and structurally hashed AND nodes with complemented edges. It supports arithmetic add/subtract/multiply, comparisons, muxes, bitwise/logical operations, and logical shifts. Division and modulo are explicitly rejected.
 
 ## Architectural rules
 
@@ -46,7 +46,7 @@ The initial AIG backend bit-blasts the supported combinational subset into input
 
 - Core implementation: C++20.
 - Build system: CMake 3.20+.
-- Tests: dependency-free C++ test harness initially.
+- Tests: dependency-free C++ test harness.
 - CI: Linux build/test workflow.
 - CLI: `synvanta`.
 

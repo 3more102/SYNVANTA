@@ -2,9 +2,9 @@
 
 **Independent SystemVerilog-to-standard-cell ASIC synthesis compiler.**
 
-SYNVANTA is an independently implemented ASIC synthesis compiler. Its current frontend accepts a documented SystemVerilog subset, lowers supported continuous assignments into a typed RTL IR, applies local RTL graph cleanup, and can lower the supported combinational subset into an And-Inverter Graph (AIG).
+SYNVANTA is an independently implemented ASIC synthesis compiler. Its current frontend accepts a documented SystemVerilog subset, lowers supported continuous assignments into a typed RTL IR, applies local RTL graph cleanup, and lowers supported combinational logic into a structurally hashed And-Inverter Graph (AIG).
 
-> **Current status: early frontend, RTL IR, optimizer, and AIG prototype.** SYNVANTA does not yet support full IEEE SystemVerilog semantics, sequential procedural RTL, arithmetic multiply/divide/modulo in AIG lowering, Liberty ingestion, standard-cell mapping, or mapped-netlist generation.
+> **Current status: early frontend, RTL IR, optimizer, and AIG prototype.** SYNVANTA does not yet support full IEEE SystemVerilog semantics, sequential procedural RTL, division/modulo in AIG lowering, Liberty ingestion, standard-cell mapping, or mapped-netlist generation.
 
 ## Build
 
@@ -32,11 +32,11 @@ synvanta aig examples/half_adder.sv
 - `inspect` prints module interfaces and assignment counts.
 - `ir` prints the typed, technology-independent RTL IR.
 - `opt` applies local identities, structural CSE, and output-rooted dead-code elimination.
-- `aig` optimizes the RTL IR and emits an AIG using complemented edges and structurally hashed AND nodes.
+- `aig` runs RTL optimization, then emits an AIG using complemented edges and structurally hashed AND nodes.
 
 ## Initial AIG support
 
-The prototype lowers inputs, known two-state constants up to 64 bits, resize, unary and reduction logic, bitwise/logical operators, muxes, add/subtract, comparisons, and logical shifts. Multiply, divide, modulo, unknown X/Z constants, and sequential elements are explicitly unsupported in this stage.
+The prototype lowers inputs, known two-state constants up to 64 bits, resize, unary/reduction logic, bitwise/logical operators, muxes, add/subtract, truncated multiply, comparisons, and logical shifts. Divide and modulo, unknown X/Z constants, and sequential elements are explicitly unsupported in this stage.
 
 See [AIG design notes](docs/aig.md), [RTL optimization](docs/rtl-optimization.md), [architecture overview](docs/architecture/overview.md), and [roadmap](docs/roadmap.md).
 

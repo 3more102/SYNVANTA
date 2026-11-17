@@ -2,600 +2,624 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cstddef>
+#include <cctype>
 #include <cstdint>
-#include <limits>
+#include <functional>
 #include <optional>
+#include <limits>
 #include <sstream>
+#include <stdexcept>
+#include <unordered_set>
 #include <string>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace synvanta {
+
+AigNetwork::AigNetwork() {
+    nodes_.push_back({AigNodeKind::Constant, aig_false, aig_false, {}, 0});
+}
+
+AigLit AigNetwork::input(const std::string& name, std::uint32_t bit) {
+    const auto key = std::make_pair(name, bit);
+    const auto found = input_index_.find(key);
+    if (found != input_index_.end()) return found->second;
+
+    if (nodes_.size() >= (static_cast<std::size_t>(std::numeric_limits<AigLit>::max()) >> 1U))
+        throw std::overflow_error("AIG node identifier space exhausted");
+    const auto id = static_cast<AigLit>(nodes_.size());
+    const AigLit lit = id << 1U;
+    nodes_.push_back({AigNodeKind::Input, aig_false, aig_false, name, bit});
+    input_index_.emplace(key, lit);
+    return lit;
+}
+
+AigLit AigNetwork::make_and(AigLit lhs, AigLit rhs) {
+    if (lhs == aig_false || rhs == aig_false) return aig_false;
+    if (lhs == aig_true) return rhs;
+    if (rhs == aig_true) return lhs;
+    if (lhs == rhs) return lhs;
+    if (lhs == invert(rhs)) return aig_false;
+    if (rhs < lhs) std::swap(lhs, rhs);
+
+    const auto key = std::make_pair(lhs, rhs);
+    const auto found = and_hash_.find(key);
+    if (found != and_hash_.end()) return found->second;
+
+    if (nodes_.size() >= (static_cast<std::size_t>(std::numeric_limits<AigLit>::max()) >> 1U))
+        throw std::overflow_error("AIG node identifier space exhausted");
+    const auto id = static_cast<AigLit>(nodes_.size());
+    const AigLit lit = id << 1U;
+    nodes_.push_back({AigNodeKind::And, lhs, rhs, {}, 0});
+    and_hash_.emplace(key, lit);
+    return lit;
+}
+
+AigLit AigNetwork::make_or(AigLit lhs, AigLit rhs) {
+    if (lhs == aig_true || rhs == aig_true) return aig_true;
+    if (lhs == aig_false) return rhs;
+    if (rhs == aig_false) return lhs;
+    if (lhs == rhs) return lhs;
+    if (lhs == invert(rhs)) return aig_true;
+    return invert(make_and(invert(lhs), invert(rhs)));
+}
+
+AigLit AigNetwork::make_xor(AigLit lhs, AigLit rhs) {
+    if (lhs == rhs) return aig_false;
+    if (lhs == invert(rhs)) return aig_true;
+    if (lhs == aig_false) return rhs;
+    if (rhs == aig_false) return lhs;
+    if (lhs == aig_true) return invert(rhs);
+    if (rhs == aig_true) return invert(lhs);
+    const AigLit left = make_and(lhs, invert(rhs));
+    const AigLit right = make_and(invert(lhs), rhs);
+    return make_or(left, right);
+}
+
+AigLit AigNetwork::make_xnor(AigLit lhs, AigLit rhs) {
+    return invert(make_xor(lhs, rhs));
+}
+
+AigLit AigNetwork::make_mux(AigLit select, AigLit when_true, AigLit when_false) {
+    if (select == aig_true) return when_true;
+    if (select == aig_false) return when_false;
+    if (when_true == when_false) return when_true;
+    if (when_true == aig_true && when_false == aig_false) return select;
+    if (when_true == aig_false && when_false == aig_true) return invert(select);
+    return make_or(make_and(select, when_true), make_and(invert(select), when_false));
+}
+
+std::size_t AigNetwork::and_count() const noexcept {
+    return static_cast<std::size_t>(std::count_if(nodes_.begin(), nodes_.end(),
+        [](const AigNode& node) { return node.kind == AigNodeKind::And; }));
+}
+
+void AigNetwork::compact(std::vector<AigAssignment>& assignments) {
+    std::vector<bool> live(nodes_.size(), false);
+    std::vector<AigLit> pending;
+    for (const auto& assignment : assignments)
+        pending.insert(pending.end(), assignment.bits.begin(), assignment.bits.end());
+
+    while (!pending.empty()) {
+        const AigLit literal = pending.back();
+        pending.pop_back();
+        const auto id = static_cast<std::size_t>(literal >> 1U);
+        if (id == 0 || live.at(id)) continue;
+        live[id] = true;
+        const auto& node = nodes_.at(id);
+        if (node.kind == AigNodeKind::And) {
+            pending.push_back(node.lhs);
+            pending.push_back(node.rhs);
+        }
+    }
+
+    const AigLit invalid = std::numeric_limits<AigLit>::max();
+    std::vector<AigLit> remap(nodes_.size(), invalid);
+    remap[0] = aig_false;
+    AigNetwork compacted;
+
+    const auto remap_literal = [&](AigLit literal) -> AigLit {
+        const auto id = static_cast<std::size_t>(literal >> 1U);
+        if (id == 0) return literal;
+        if (id >= remap.size() || remap[id] == invalid)
+            throw std::logic_error("AIG sweep encountered a non-topological edge");
+        return remap[id] ^ (literal & 1U);
+    };
+
+    for (std::size_t id = 1; id < nodes_.size(); ++id) {
+        if (!live[id]) continue;
+        const auto& node = nodes_[id];
+        if (node.kind == AigNodeKind::Input)
+            remap[id] = compacted.input(node.input_name, node.input_bit);
+        else if (node.kind == AigNodeKind::And)
+            remap[id] = compacted.make_and(remap_literal(node.lhs), remap_literal(node.rhs));
+    }
+
+    for (auto& assignment : assignments)
+        for (auto& literal : assignment.bits) literal = remap_literal(literal);
+    *this = std::move(compacted);
+}
+
 namespace {
 
-std::uint64_t width_mask(std::uint32_t width) {
-    if (width >= 64U) return std::numeric_limits<std::uint64_t>::max();
-    if (width == 0U) return 0U;
-    return (std::uint64_t{1} << width) - 1U;
+using Bits = std::vector<AigLit>;
+
+int digit_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+    if (c >= 'A' && c <= 'F') return 10 + c - 'A';
+    return -1;
 }
 
-std::optional<std::uint64_t> parse_constant(const RtlNode& node) {
-    if (node.width == 0U || node.width > 64U) return std::nullopt;
+Bits parse_constant_bits(const RtlNode& node) {
+    std::string text;
+    text.reserve(node.literal.size());
+    for (char c : node.literal) if (c != '_') text.push_back(c);
 
-    std::string literal;
-    literal.reserve(node.literal.size());
-    for (const char character : node.literal) {
-        if (character != '_') literal.push_back(character);
-    }
+    if (text == "'0") return Bits{aig_false};
+    if (text == "'1") return Bits{aig_true};
 
-    const auto apostrophe = literal.find(static_cast<char>(39));
-    if (apostrophe == std::string::npos) {
-        std::uint64_t value = 0;
-        const auto parsed = std::from_chars(
-            literal.data(), literal.data() + literal.size(), value, 10);
-        if (parsed.ec != std::errc{} || parsed.ptr != literal.data() + literal.size())
-            return std::nullopt;
-        return value & width_mask(node.width);
-    }
-
-    if (apostrophe == 0U) {
-        if (literal.size() != 2U) return std::nullopt;
-        if (literal[1] == '0') return 0U;
-        if (literal[1] == '1') return 1U;
-        return std::nullopt;
-    }
-
-    std::size_t position = apostrophe + 1U;
-    if (position < literal.size() &&
-        (literal[position] == 's' || literal[position] == 'S')) {
-        ++position;
-    }
-    if (position >= literal.size()) return std::nullopt;
-
-    const char base_character = literal[position++];
+    const auto apostrophe = text.find('\'');
+    std::uint32_t width = node.width;
+    bool is_signed = node.is_signed;
     int base = 10;
-    if (base_character == 'b' || base_character == 'B') base = 2;
-    else if (base_character == 'o' || base_character == 'O') base = 8;
-    else if (base_character == 'h' || base_character == 'H') base = 16;
-    else if (base_character != 'd' && base_character != 'D') return std::nullopt;
+    std::string digits;
 
-    std::uint64_t value = 0;
-    const auto parsed = std::from_chars(
-        literal.data() + static_cast<std::ptrdiff_t>(position),
-        literal.data() + literal.size(), value, base);
-    if (parsed.ec != std::errc{} || parsed.ptr != literal.data() + literal.size())
-        return std::nullopt;
-    return value & width_mask(node.width);
+    if (apostrophe == std::string::npos) {
+        digits = text;
+    } else {
+        const auto parsed_width = std::from_chars(text.data(), text.data() + apostrophe, width, 10);
+        if (parsed_width.ec != std::errc{} || parsed_width.ptr != text.data() + apostrophe)
+            throw std::runtime_error("invalid sized constant: " + node.literal);
+        std::size_t pos = apostrophe + 1;
+        if (pos < text.size() && (text[pos] == 's' || text[pos] == 'S')) {
+            is_signed = true;
+            ++pos;
+        }
+        if (pos >= text.size()) throw std::runtime_error("missing base in constant: " + node.literal);
+        const char base_char = static_cast<char>(std::tolower(static_cast<unsigned char>(text[pos++])));
+        if (base_char == 'b') base = 2;
+        else if (base_char == 'o') base = 8;
+        else if (base_char == 'd') base = 10;
+        else if (base_char == 'h') base = 16;
+        else throw std::runtime_error("unsupported base in constant: " + node.literal);
+        digits = text.substr(pos);
+    }
+
+    if (width == 0 || width > 64)
+        throw std::runtime_error("AIG constant width must be between 1 and 64 bits: " + node.literal);
+    if (digits.empty()) throw std::runtime_error("constant has no digits: " + node.literal);
+
+    Bits result(width, aig_false);
+    if (base == 10) {
+        std::size_t consumed = 0;
+        const auto value = std::stoull(digits, &consumed, 10);
+        if (consumed != digits.size()) throw std::runtime_error("non-binary value in constant: " + node.literal);
+        for (std::uint32_t bit = 0; bit < width; ++bit)
+            result[bit] = ((value >> bit) & 1ULL) != 0 ? aig_true : aig_false;
+        return result;
+    }
+
+    const std::uint32_t bits_per_digit = base == 2 ? 1U : base == 8 ? 3U : 4U;
+    std::uint32_t bit_index = 0;
+    for (auto it = digits.rbegin(); it != digits.rend() && bit_index < width; ++it) {
+        const int value = digit_value(*it);
+        if (value < 0 || value >= base)
+            throw std::runtime_error("X/Z or invalid digit in two-state AIG constant: " + node.literal);
+        for (std::uint32_t bit = 0; bit < bits_per_digit && bit_index < width; ++bit, ++bit_index)
+            result[bit_index] = ((value >> bit) & 1) != 0 ? aig_true : aig_false;
+    }
+    (void)is_signed;
+    return result;
 }
 
-std::string literal_name(AigLiteral literal) {
-    const auto id = literal >> 1U;
-    std::string name = "%" + std::to_string(id);
-    if ((literal & 1U) != 0U) name.insert(name.begin(), '!');
-    return name;
-}
-
-class ModuleBuilder {
-public:
-    explicit ModuleBuilder(const RtlModule& source) : source_(source) {}
-
-    std::optional<AigModule> build(std::vector<Diagnostic>& diagnostics) {
-        diagnostics_ = &diagnostics;
-        diagnostic_start_ = diagnostics.size();
-
-        AigModule output;
-        output.name = source_.name;
-        module_ = &output;
-        module_->nodes.push_back({0U, AigNodeKind::ConstantFalse, aig_false, aig_false, "false"});
-
-        values_.resize(source_.nodes.size());
-        for (std::size_t index = 0; index < source_.nodes.size(); ++index) {
-            const auto& node = source_.nodes[index];
-            if (node.id != index) {
-                report("AIG0001", "RTL node IDs must match their module-local vector indices", node);
-                return std::nullopt;
-            }
-            if (node.width == 0U) {
-                report("AIG0002", "RTL node width must be positive", node);
-                return std::nullopt;
-            }
-            for (const auto operand : node.operands) {
-                if (operand >= index) {
-                    report("AIG0003", "RTL operands must refer to earlier nodes", node);
-                    return std::nullopt;
-                }
-            }
-
-            auto lowered = lower_node(node);
-            if (!lowered || has_errors()) return std::nullopt;
-            values_[index] = std::move(*lowered);
-        }
-
-        if (!build_outputs()) return std::nullopt;
-        return output;
-    }
-
-private:
-    const RtlModule& source_;
-    AigModule* module_{nullptr};
-    std::vector<Diagnostic>* diagnostics_{nullptr};
-    std::size_t diagnostic_start_{0};
-    std::vector<std::vector<AigLiteral>> values_;
-    std::unordered_map<std::uint64_t, AigLiteral> and_cache_;
-
-    bool has_errors() const {
-        for (std::size_t index = diagnostic_start_; index < diagnostics_->size(); ++index) {
-            if ((*diagnostics_)[index].severity == DiagnosticSeverity::Error) return true;
-        }
-        return false;
-    }
-
-    void report(const std::string& code, const std::string& message,
-                const RtlNode& node) {
-        diagnostics_->push_back(
-            {DiagnosticSeverity::Error, code, message, node.location});
-    }
-
-    void report_output_error(const std::string& code, const std::string& message) {
-        diagnostics_->push_back(
-            {DiagnosticSeverity::Error, code, message, SourceLocation{}});
-    }
-
-    AigLiteral make_and(AigLiteral lhs, AigLiteral rhs) {
-        if (lhs == aig_false || rhs == aig_false) return aig_false;
-        if (lhs == aig_true) return rhs;
-        if (rhs == aig_true) return lhs;
-        if (lhs == rhs) return lhs;
-        if (lhs == aig_invert(rhs)) return aig_false;
-        if (rhs < lhs) std::swap(lhs, rhs);
-
-        const auto key = (static_cast<std::uint64_t>(lhs) << 32U) |
-                         static_cast<std::uint64_t>(rhs);
-        const auto found = and_cache_.find(key);
-        if (found != and_cache_.end()) return found->second;
-
-        const auto maximum_id = std::numeric_limits<std::uint32_t>::max() >> 1U;
-        if (module_->nodes.size() > static_cast<std::size_t>(maximum_id)) {
-            diagnostics_->push_back(
-                {DiagnosticSeverity::Error, "AIG0009", "AIG node ID space is exhausted", {}});
-            return aig_false;
-        }
-
-        const auto id = static_cast<std::uint32_t>(module_->nodes.size());
-        module_->nodes.push_back({id, AigNodeKind::And, lhs, rhs, {}});
-        const auto result = id << 1U;
-        and_cache_.emplace(key, result);
-        return result;
-    }
-
-    AigLiteral make_or(AigLiteral lhs, AigLiteral rhs) {
-        return aig_invert(make_and(aig_invert(lhs), aig_invert(rhs)));
-    }
-
-    AigLiteral make_xor(AigLiteral lhs, AigLiteral rhs) {
-        if (lhs == rhs) return aig_false;
-        if (lhs == aig_invert(rhs)) return aig_true;
-        const auto both = make_and(lhs, rhs);
-        const auto either = make_or(lhs, rhs);
-        return make_and(either, aig_invert(both));
-    }
-
-    AigLiteral make_mux(AigLiteral select, AigLiteral when_true, AigLiteral when_false) {
-        if (when_true == when_false) return when_true;
-        if (select == aig_true) return when_true;
-        if (select == aig_false) return when_false;
-        return make_or(make_and(select, when_true),
-                       make_and(aig_invert(select), when_false));
-    }
-
-    AigLiteral reduce_or(const std::vector<AigLiteral>& bits) {
-        AigLiteral result = aig_false;
-        for (const auto bit : bits) result = make_or(result, bit);
-        return result;
-    }
-
-    AigLiteral reduce_and(const std::vector<AigLiteral>& bits) {
-        AigLiteral result = aig_true;
-        for (const auto bit : bits) result = make_and(result, bit);
-        return result;
-    }
-
-    AigLiteral reduce_xor(const std::vector<AigLiteral>& bits) {
-        AigLiteral result = aig_false;
-        for (const auto bit : bits) result = make_xor(result, bit);
-        return result;
-    }
-
-    std::optional<std::vector<AigLiteral>> lower_input(const RtlNode& node) {
-        const auto port = std::find_if(
-            source_.ports.begin(), source_.ports.end(),
-            [&](const RtlPort& candidate) {
-                return candidate.name == node.name &&
-                       candidate.direction == PortDirection::Input;
-            });
-        if (port == source_.ports.end()) {
-            report("AIG0004", "input IR node does not match an input port", node);
-            return std::nullopt;
-        }
-        if (port->width != node.width) {
-            report("AIG0005", "input IR width does not match its port declaration", node);
-            return std::nullopt;
-        }
-
-        std::vector<AigLiteral> bits;
-        bits.reserve(node.width);
-        for (std::uint32_t bit = 0; bit < node.width; ++bit) {
-            std::string name = node.name;
-            if (node.width > 1U) name += "[" + std::to_string(bit) + "]";
-            const auto maximum_id = std::numeric_limits<std::uint32_t>::max() >> 1U;
-            if (module_->nodes.size() > static_cast<std::size_t>(maximum_id)) {
-                report("AIG0009", "AIG node ID space is exhausted", node);
-                return std::nullopt;
-            }
-            const auto id = static_cast<std::uint32_t>(module_->nodes.size());
-            module_->nodes.push_back({id, AigNodeKind::Input, aig_false, aig_false, name});
-            const auto literal = id << 1U;
-            bits.push_back(literal);
-            module_->inputs.push_back({node.name, bit, literal});
-        }
-        return bits;
-    }
-
-    std::optional<std::vector<AigLiteral>> lower_constant(const RtlNode& node) {
-        const auto value = parse_constant(node);
-        if (!value) {
-            report("AIG0006",
-                   "constant is unknown, wider than 64 bits, or outside the supported two-state literal subset",
-                   node);
-            return std::nullopt;
-        }
-
-        std::vector<AigLiteral> bits;
-        bits.reserve(node.width);
-        for (std::uint32_t bit = 0; bit < node.width; ++bit) {
-            bits.push_back(((*value >> bit) & 1U) != 0U ? aig_true : aig_false);
-        }
-        return bits;
-    }
-
-    bool require_count(const RtlNode& node, std::size_t expected) {
-        if (node.operands.size() == expected) return true;
-        report("AIG0007", "RTL operation has an invalid operand count", node);
-        return false;
-    }
-
-    const std::vector<AigLiteral>* operand_bits(const RtlNode& node, std::size_t index) {
-        if (index >= node.operands.size()) return nullptr;
-        const auto id = node.operands[index];
-        if (id >= values_.size() || values_[id].empty()) {
-            report("AIG0008", "RTL operation references an unavailable operand value", node);
-            return nullptr;
-        }
-        return &values_[id];
-    }
-
-    std::vector<AigLiteral> negate_bits(const std::vector<AigLiteral>& input) {
-        std::vector<AigLiteral> result;
-        result.reserve(input.size());
-        AigLiteral carry = aig_true;
-        for (const auto bit : input) {
-            const auto inverted = aig_invert(bit);
-            result.push_back(make_xor(inverted, carry));
-            carry = make_and(inverted, carry);
-        }
-        return result;
-    }
-
-    std::vector<AigLiteral> add_bits(const std::vector<AigLiteral>& lhs,
-                                     const std::vector<AigLiteral>& rhs,
-                                     bool subtract) {
-        std::vector<AigLiteral> result;
-        result.reserve(lhs.size());
-        AigLiteral carry = subtract ? aig_true : aig_false;
-        for (std::size_t bit = 0; bit < lhs.size(); ++bit) {
-            const auto right = subtract ? aig_invert(rhs[bit]) : rhs[bit];
-            const auto propagate = make_xor(lhs[bit], right);
-            result.push_back(make_xor(propagate, carry));
-            const auto generate = make_and(lhs[bit], right);
-            carry = make_or(generate, make_and(propagate, carry));
-        }
-        return result;
-    }
-
-    AigLiteral unsigned_less(const std::vector<AigLiteral>& lhs,
-                             const std::vector<AigLiteral>& rhs) {
-        AigLiteral less = aig_false;
-        AigLiteral equal = aig_true;
-        for (std::size_t index = lhs.size(); index > 0; --index) {
-            const auto bit = index - 1U;
-            const auto this_bit_less = make_and(
-                equal, make_and(aig_invert(lhs[bit]), rhs[bit]));
-            less = make_or(less, this_bit_less);
-            equal = make_and(equal, aig_invert(make_xor(lhs[bit], rhs[bit])));
-        }
-        return less;
-    }
-
-    AigLiteral compare_less(const RtlNode& node,
-                            const std::vector<AigLiteral>& lhs,
-                            const std::vector<AigLiteral>& rhs) {
-        const auto unsigned_result = unsigned_less(lhs, rhs);
-        if (node.operands.size() != 2U) return unsigned_result;
-        const auto lhs_signed = source_.nodes[node.operands[0]].is_signed;
-        const auto rhs_signed = source_.nodes[node.operands[1]].is_signed;
-        if (!lhs_signed || !rhs_signed || lhs.empty()) return unsigned_result;
-
-        const auto sign_difference = make_xor(lhs.back(), rhs.back());
-        return make_mux(sign_difference, lhs.back(), unsigned_result);
-    }
-
-    std::vector<AigLiteral> shift_bits(const std::vector<AigLiteral>& lhs,
-                                       const std::vector<AigLiteral>& amount,
-                                       bool left_shift) {
-        auto current = lhs;
-        const auto width = current.size();
-        for (std::size_t stage = 0; stage < amount.size(); ++stage) {
-            constexpr auto size_bits = static_cast<std::size_t>(
-                std::numeric_limits<std::size_t>::digits);
-            const bool beyond_width =
-                stage >= size_bits || (std::size_t{1} << stage) >= width;
-            if (beyond_width) {
-                for (auto& bit : current) bit = make_mux(amount[stage], aig_false, bit);
-                continue;
-            }
-
-            const auto distance = std::size_t{1} << stage;
-            std::vector<AigLiteral> next(width, aig_false);
-            for (std::size_t bit = 0; bit < width; ++bit) {
-                AigLiteral shifted = aig_false;
-                if (left_shift) {
-                    if (bit >= distance) shifted = current[bit - distance];
-                } else if (bit + distance < width) {
-                    shifted = current[bit + distance];
-                }
-                next[bit] = make_mux(amount[stage], shifted, current[bit]);
-            }
-            current = std::move(next);
-        }
-        return current;
-    }
-
-    std::optional<std::vector<AigLiteral>> lower_node(const RtlNode& node) {
-        if (node.op == RtlOp::Input) {
-            if (!require_count(node, 0U)) return std::nullopt;
-            return lower_input(node);
-        }
-        if (node.op == RtlOp::Constant) {
-            if (!require_count(node, 0U)) return std::nullopt;
-            return lower_constant(node);
-        }
-
-        if (node.op == RtlOp::Resize) {
-            if (!require_count(node, 1U)) return std::nullopt;
-            const auto* source_bits = operand_bits(node, 0U);
-            if (source_bits == nullptr) return std::nullopt;
-            const auto source_id = node.operands[0];
-            const auto source_signed = source_.nodes[source_id].is_signed;
-            std::vector<AigLiteral> result;
-            result.reserve(node.width);
-            for (std::uint32_t bit = 0; bit < node.width; ++bit) {
-                if (bit < source_bits->size()) {
-                    result.push_back((*source_bits)[bit]);
-                } else if (source_signed && !source_bits->empty()) {
-                    result.push_back(source_bits->back());
-                } else {
-                    result.push_back(aig_false);
-                }
-            }
-            return result;
-        }
-
-        const auto operand_count = node.op == RtlOp::Mux ? 3U :
-            ((node.op == RtlOp::UnaryPlus || node.op == RtlOp::Negate ||
-              node.op == RtlOp::BitNot || node.op == RtlOp::LogicalNot ||
-              node.op == RtlOp::ReduceNand || node.op == RtlOp::ReduceNor ||
-              node.op == RtlOp::ReduceXnor) ? 1U : 2U);
-        if (!require_count(node, operand_count)) return std::nullopt;
-
-        std::vector<const std::vector<AigLiteral>*> operands;
-        operands.reserve(operand_count);
-        for (std::size_t index = 0; index < operand_count; ++index) {
-            const auto* bits = operand_bits(node, index);
-            if (bits == nullptr) return std::nullopt;
-            operands.push_back(bits);
-        }
-
-        const auto& lhs = *operands[0];
-        if (node.op == RtlOp::UnaryPlus) return lhs;
-        if (node.op == RtlOp::Negate) {
-            if (lhs.size() != node.width) {
-                report("AIG0010", "unary arithmetic operand width does not match its result width", node);
-                return std::nullopt;
-            }
-            return negate_bits(lhs);
-        }
-        if (node.op == RtlOp::BitNot) {
-            std::vector<AigLiteral> result;
-            result.reserve(lhs.size());
-            for (const auto bit : lhs) result.push_back(aig_invert(bit));
-            return result;
-        }
-        if (node.op == RtlOp::LogicalNot) return std::vector<AigLiteral>{aig_invert(reduce_or(lhs))};
-        if (node.op == RtlOp::ReduceNand) return std::vector<AigLiteral>{aig_invert(reduce_and(lhs))};
-        if (node.op == RtlOp::ReduceNor) return std::vector<AigLiteral>{aig_invert(reduce_or(lhs))};
-        if (node.op == RtlOp::ReduceXnor) return std::vector<AigLiteral>{aig_invert(reduce_xor(lhs))};
-
-        if (node.op == RtlOp::Mux) {
-            const auto& when_true = *operands[1];
-            const auto& when_false = *operands[2];
-            if (when_true.size() != node.width || when_false.size() != node.width) {
-                report("AIG0011", "mux data widths do not match the result width", node);
-                return std::nullopt;
-            }
-            const auto select = reduce_or(lhs);
-            std::vector<AigLiteral> result;
-            result.reserve(node.width);
-            for (std::uint32_t bit = 0; bit < node.width; ++bit)
-                result.push_back(make_mux(select, when_true[bit], when_false[bit]));
-            return result;
-        }
-
-        const auto& rhs = *operands[1];
-        if (node.op == RtlOp::LogicalAnd)
-            return std::vector<AigLiteral>{make_and(reduce_or(lhs), reduce_or(rhs))};
-        if (node.op == RtlOp::LogicalOr)
-            return std::vector<AigLiteral>{make_or(reduce_or(lhs), reduce_or(rhs))};
-
-        if (node.op == RtlOp::ShiftLeft || node.op == RtlOp::ShiftRight) {
-            if (lhs.size() != node.width) {
-                report("AIG0012", "shift left operand width does not match the result width", node);
-                return std::nullopt;
-            }
-            return shift_bits(lhs, rhs, node.op == RtlOp::ShiftLeft);
-        }
-
-        if (node.op == RtlOp::Add || node.op == RtlOp::Subtract) {
-            if (lhs.size() != node.width || rhs.size() != node.width) {
-                report("AIG0013", "arithmetic operands must be normalized to the result width", node);
-                return std::nullopt;
-            }
-            return add_bits(lhs, rhs, node.op == RtlOp::Subtract);
-        }
-
-        if (node.op == RtlOp::BitAnd || node.op == RtlOp::BitOr ||
-            node.op == RtlOp::BitXor || node.op == RtlOp::BitXnor) {
-            if (lhs.size() != node.width || rhs.size() != node.width) {
-                report("AIG0014", "bitwise operands must be normalized to the result width", node);
-                return std::nullopt;
-            }
-            std::vector<AigLiteral> result;
-            result.reserve(node.width);
-            for (std::uint32_t bit = 0; bit < node.width; ++bit) {
-                if (node.op == RtlOp::BitAnd) result.push_back(make_and(lhs[bit], rhs[bit]));
-                else if (node.op == RtlOp::BitOr) result.push_back(make_or(lhs[bit], rhs[bit]));
-                else if (node.op == RtlOp::BitXor) result.push_back(make_xor(lhs[bit], rhs[bit]));
-                else result.push_back(aig_invert(make_xor(lhs[bit], rhs[bit])));
-            }
-            return result;
-        }
-
-        if (node.op == RtlOp::Equal || node.op == RtlOp::NotEqual ||
-            node.op == RtlOp::Less || node.op == RtlOp::LessEqual ||
-            node.op == RtlOp::Greater || node.op == RtlOp::GreaterEqual) {
-            if (lhs.size() != rhs.size() || lhs.empty()) {
-                report("AIG0015", "comparison operands must have equal, non-zero widths", node);
-                return std::nullopt;
-            }
-            AigLiteral equal = aig_true;
-            for (std::size_t bit = 0; bit < lhs.size(); ++bit)
-                equal = make_and(equal, aig_invert(make_xor(lhs[bit], rhs[bit])));
-            const auto less = compare_less(node, lhs, rhs);
-            const auto greater = make_and(aig_invert(less), aig_invert(equal));
-
-            AigLiteral result = aig_false;
-            switch (node.op) {
-                case RtlOp::Equal: result = equal; break;
-                case RtlOp::NotEqual: result = aig_invert(equal); break;
-                case RtlOp::Less: result = less; break;
-                case RtlOp::LessEqual: result = make_or(less, equal); break;
-                case RtlOp::Greater: result = greater; break;
-                case RtlOp::GreaterEqual: result = aig_invert(less); break;
-                default: break;
-            }
-            return std::vector<AigLiteral>{result};
-        }
-
-        if (node.op == RtlOp::Multiply || node.op == RtlOp::Divide || node.op == RtlOp::Modulo) {
-            report("AIG0016",
-                   "multiply, divide, and modulo are not supported by the initial AIG lowering subset",
-                   node);
-            return std::nullopt;
-        }
-
-        report("AIG0017", "unsupported RTL operation in AIG lowering", node);
-        return std::nullopt;
-    }
-
-    bool build_outputs() {
-        std::unordered_map<std::string, const RtlAssignment*> assignments;
-        for (const auto& assignment : source_.assignments) {
-            const auto port = std::find_if(
-                source_.ports.begin(), source_.ports.end(),
-                [&](const RtlPort& candidate) {
-                    return candidate.name == assignment.target &&
-                           candidate.direction == PortDirection::Output;
-                });
-            if (port == source_.ports.end()) continue;
-            if (!assignments.emplace(assignment.target, &assignment).second) {
-                report_output_error("AIG0018", "multiple assignments target one output port");
-                return false;
-            }
-        }
-
-        for (const auto& port : source_.ports) {
-            if (port.direction != PortDirection::Output) continue;
-            const auto assignment = assignments.find(port.name);
-            if (assignment == assignments.end()) {
-                report_output_error("AIG0019", "output port '" + port.name + "' has no lowered assignment");
-                return false;
-            }
-            const auto value_id = assignment->second->value;
-            if (value_id >= values_.size() || values_[value_id].size() != port.width) {
-                report_output_error("AIG0020", "output assignment width does not match port '" + port.name + "'");
-                return false;
-            }
-            for (std::uint32_t bit = 0; bit < port.width; ++bit)
-                module_->outputs.push_back({port.name, bit, values_[value_id][bit]});
-        }
-        return !has_errors();
-    }
-};
-
-} // namespace
-
-AigBuildResult AigBuilder::build(const RtlDesign& design) const {
-    AigBuildResult result;
-    result.design.modules.reserve(design.modules.size());
-    for (const auto& module : design.modules) {
-        ModuleBuilder builder(module);
-        auto lowered = builder.build(result.diagnostics);
-        if (lowered) result.design.modules.push_back(std::move(*lowered));
+Bits resize_bits(const Bits& source, std::uint32_t width, bool sign_extend) {
+    Bits result = source;
+    if (result.size() > width) {
+        result.resize(width);
+    } else if (result.size() < width) {
+        const AigLit extension = sign_extend && !result.empty() ? result.back() : aig_false;
+        result.resize(width, extension);
     }
     return result;
 }
 
-const char* aig_node_kind_name(AigNodeKind kind) {
-    switch (kind) {
-        case AigNodeKind::ConstantFalse: return "const_false";
-        case AigNodeKind::Input: return "input";
-        case AigNodeKind::And: return "and";
+Bits fit_operand(const RtlModule& module, const std::vector<Bits>& values, ValueId id, std::uint32_t width) {
+    if (id >= values.size() || id >= module.nodes.size())
+        throw std::runtime_error("RTL operand references an invalid ValueId");
+    const auto& source = module.nodes[id];
+    if (source.op == RtlOp::Constant && source.literal == "'1")
+        return Bits(width, aig_true);
+    if (source.op == RtlOp::Constant && source.literal == "'0")
+        return Bits(width, aig_false);
+    return resize_bits(values[id], width, source.is_signed);
+}
+
+AigLit reduce_or(AigNetwork& network, const Bits& bits) {
+    AigLit result = aig_false;
+    for (const auto bit : bits) result = network.make_or(result, bit);
+    return result;
+}
+
+AigLit reduce_and(AigNetwork& network, const Bits& bits) {
+    AigLit result = aig_true;
+    for (const auto bit : bits) result = network.make_and(result, bit);
+    return result;
+}
+
+AigLit reduce_xor(AigNetwork& network, const Bits& bits) {
+    AigLit result = aig_false;
+    for (const auto bit : bits) result = network.make_xor(result, bit);
+    return result;
+}
+
+Bits add_vectors(AigNetwork& network, const Bits& lhs, const Bits& rhs, std::uint32_t width, bool subtract) {
+    const Bits a = resize_bits(lhs, width, false);
+    Bits b = resize_bits(rhs, width, false);
+    if (subtract) for (auto& bit : b) bit = AigNetwork::invert(bit);
+
+    AigLit carry = subtract ? aig_true : aig_false;
+    Bits result(width, aig_false);
+    for (std::uint32_t bit = 0; bit < width; ++bit) {
+        const AigLit propagate = network.make_xor(a[bit], b[bit]);
+        result[bit] = network.make_xor(propagate, carry);
+        const AigLit generate = network.make_and(a[bit], b[bit]);
+        carry = network.make_or(generate, network.make_and(propagate, carry));
     }
-    return "unknown";
+    return result;
+}
+
+Bits multiply_vectors(AigNetwork& network, const Bits& lhs, const Bits& rhs, std::uint32_t width) {
+    const Bits a = resize_bits(lhs, width, false);
+    const Bits b = resize_bits(rhs, width, false);
+    Bits result(width, aig_false);
+    for (std::uint32_t row_index = 0; row_index < width && row_index < b.size(); ++row_index) {
+        Bits row(width, aig_false);
+        for (std::uint32_t col = 0; col + row_index < width && col < a.size(); ++col)
+            row[col + row_index] = network.make_and(a[col], b[row_index]);
+        result = add_vectors(network, result, row, width, false);
+    }
+    return result;
+}
+
+AigLit unsigned_less(AigNetwork& network, const Bits& lhs, const Bits& rhs) {
+    const std::uint32_t width = static_cast<std::uint32_t>(std::max(lhs.size(), rhs.size()));
+    const Bits a = resize_bits(lhs, width, false);
+    const Bits b = resize_bits(rhs, width, false);
+    AigLit less = aig_false;
+    AigLit equal = aig_true;
+    for (std::uint32_t index = width; index > 0; --index) {
+        const auto bit = index - 1;
+        const AigLit this_less = network.make_and(equal,
+            network.make_and(AigNetwork::invert(a[bit]), b[bit]));
+        less = network.make_or(less, this_less);
+        equal = network.make_and(equal, network.make_xnor(a[bit], b[bit]));
+    }
+    return less;
+}
+
+AigLit compare_less(AigNetwork& network, Bits lhs, Bits rhs, bool is_signed) {
+    const std::uint32_t width = static_cast<std::uint32_t>(std::max(lhs.size(), rhs.size()));
+    lhs = resize_bits(lhs, width, is_signed);
+    rhs = resize_bits(rhs, width, is_signed);
+    if (is_signed && width > 0) {
+        lhs.back() = AigNetwork::invert(lhs.back());
+        rhs.back() = AigNetwork::invert(rhs.back());
+    }
+    return unsigned_less(network, lhs, rhs);
+}
+
+Bits barrel_shift(AigNetwork& network, const Bits& data, const Bits& amount,
+                  std::uint32_t width, bool left) {
+    Bits current = resize_bits(data, width, false);
+    std::uint32_t stages = 0;
+    while ((std::uint64_t{1} << stages) < width) ++stages;
+
+    for (std::uint32_t stage = 0; stage < stages && stage < amount.size(); ++stage) {
+        const std::uint32_t distance = std::uint32_t{1} << stage;
+        Bits shifted(width, aig_false);
+        for (std::uint32_t bit = 0; bit < width; ++bit) {
+            if (left) {
+                if (bit >= distance) shifted[bit] = current[bit - distance];
+            } else if (bit + distance < width) {
+                shifted[bit] = current[bit + distance];
+            }
+        }
+        Bits next(width, aig_false);
+        for (std::uint32_t bit = 0; bit < width; ++bit)
+            next[bit] = network.make_mux(amount[stage], shifted[bit], current[bit]);
+        current = std::move(next);
+    }
+
+    AigLit too_large = aig_false;
+    for (std::size_t bit = stages; bit < amount.size(); ++bit)
+        too_large = network.make_or(too_large, amount[bit]);
+    if (too_large != aig_false)
+        for (auto& bit : current) bit = network.make_mux(too_large, aig_false, bit);
+    return current;
+}
+
+class ModuleLowerer {
+public:
+    ModuleLowerer(const RtlModule& source, std::vector<Diagnostic>& diagnostics)
+        : source_(source), diagnostics_(diagnostics), diagnostic_start_(diagnostics.size()) {}
+
+    bool run() {
+        result_.name = source_.name;
+        result_.ports = source_.ports;
+        values_.resize(source_.nodes.size());
+
+        for (std::size_t index = 0; index < source_.nodes.size(); ++index) {
+            const auto& node = source_.nodes[index];
+            if (node.id != index) {
+                report(node, "AIG0002", "RTL node IDs must be dense and ordered");
+                continue;
+            }
+            bool valid_operands = true;
+            for (const auto operand_id : node.operands) {
+                if (operand_id >= index) {
+                    report(node, "AIG0006", "RTL operands must refer to earlier nodes");
+                    valid_operands = false;
+                    break;
+                }
+            }
+            if (!valid_operands) continue;
+            try {
+                auto lowered = lower_node(node);
+                if (lowered) values_[index] = std::move(*lowered);
+            } catch (const std::exception& error) {
+                report(node, "AIG0003", error.what());
+            }
+        }
+
+        if (has_errors()) return false;
+        std::unordered_set<std::string> driven_outputs;
+        for (const auto& assignment : source_.assignments) {
+            const bool is_output_port = std::any_of(source_.ports.begin(), source_.ports.end(),
+                [&](const RtlPort& port) {
+                    return port.name == assignment.target && port.direction == PortDirection::Output;
+                });
+            if (!is_output_port) continue;
+            if (!driven_outputs.insert(assignment.target).second) {
+                diagnostics_.push_back({DiagnosticSeverity::Error, "AIG0007",
+                    "multiple lowered assignments target output '" + assignment.target + "'", {}});
+                continue;
+            }
+            if (assignment.value >= values_.size()) {
+                diagnostics_.push_back({DiagnosticSeverity::Error, "AIG0004",
+                    "assignment references an invalid RTL ValueId", {}});
+                continue;
+            }
+            const auto& source_node = source_.nodes[assignment.value];
+            Bits bits;
+            if (source_node.op == RtlOp::Constant && source_node.literal == "'1")
+                bits = Bits(assignment.target_width, aig_true);
+            else
+                bits = resize_bits(values_[assignment.value], assignment.target_width, source_node.is_signed);
+            result_.assignments.push_back({assignment.target, std::move(bits),
+                assignment.target_width, assignment.target_is_signed});
+        }
+        for (const auto& port : source_.ports) {
+            if (port.direction == PortDirection::Output && !driven_outputs.contains(port.name)) {
+                diagnostics_.push_back({DiagnosticSeverity::Error, "AIG0008",
+                    "output port '" + port.name + "' has no lowered assignment", {}});
+            }
+        }
+        return !has_errors();
+    }
+
+    AigModule take_result() { return std::move(result_); }
+
+private:
+    const RtlModule& source_;
+    std::vector<Diagnostic>& diagnostics_;
+    std::size_t diagnostic_start_;
+    AigModule result_;
+    std::vector<Bits> values_;
+
+    bool has_errors() const {
+        for (std::size_t index = diagnostic_start_; index < diagnostics_.size(); ++index)
+            if (diagnostics_[index].severity == DiagnosticSeverity::Error) return true;
+        return false;
+    }
+
+    void report(const RtlNode& node, const std::string& code, const std::string& message) {
+        diagnostics_.push_back({DiagnosticSeverity::Error, code, message, node.location});
+    }
+
+    Bits operand(const RtlNode& node, std::size_t index, std::uint32_t width) {
+        if (index >= node.operands.size()) throw std::runtime_error("RTL operation has too few operands");
+        return fit_operand(source_, values_, node.operands[index], width);
+    }
+
+    std::optional<Bits> lower_node(const RtlNode& node) {
+        auto& network = result_.network;
+        const auto width = node.width;
+        if (width == 0) throw std::runtime_error("zero-width RTL values are not supported");
+
+        switch (node.op) {
+        case RtlOp::Input: {
+            Bits bits;
+            bits.reserve(width);
+            for (std::uint32_t bit = 0; bit < width; ++bit)
+                bits.push_back(network.input(node.name, bit));
+            return bits;
+        }
+        case RtlOp::Constant:
+            return parse_constant_bits(node);
+        case RtlOp::Resize: {
+            if (node.operands.empty()) throw std::runtime_error("resize operation has no operand");
+            return fit_operand(source_, values_, node.operands[0], width);
+        }
+        case RtlOp::UnaryPlus:
+            return operand(node, 0, width);
+        case RtlOp::Negate: {
+            Bits value = operand(node, 0, width);
+            for (auto& bit : value) bit = AigNetwork::invert(bit);
+            Bits one(width, aig_false);
+            one[0] = aig_true;
+            return add_vectors(network, value, one, width, false);
+        }
+        case RtlOp::BitNot: {
+            Bits value = operand(node, 0, width);
+            for (auto& bit : value) bit = AigNetwork::invert(bit);
+            return value;
+        }
+        case RtlOp::LogicalNot:
+            return Bits{AigNetwork::invert(reduce_or(network, operand(node, 0,
+                static_cast<std::uint32_t>(values_.at(node.operands.at(0)).size()))))};
+        case RtlOp::ReduceNand: {
+            const auto& value = values_.at(node.operands.at(0));
+            return Bits{AigNetwork::invert(reduce_and(network, value))};
+        }
+        case RtlOp::ReduceNor: {
+            const auto& value = values_.at(node.operands.at(0));
+            return Bits{AigNetwork::invert(reduce_or(network, value))};
+        }
+        case RtlOp::ReduceXnor: {
+            const auto& value = values_.at(node.operands.at(0));
+            return Bits{AigNetwork::invert(reduce_xor(network, value))};
+        }
+        case RtlOp::Add:
+        case RtlOp::Subtract: {
+            const Bits lhs = operand(node, 0, width);
+            const Bits rhs = operand(node, 1, width);
+            return add_vectors(network, lhs, rhs, width, node.op == RtlOp::Subtract);
+        }
+        case RtlOp::Multiply:
+            return multiply_vectors(network, operand(node, 0, width), operand(node, 1, width), width);
+        case RtlOp::BitAnd:
+        case RtlOp::BitOr:
+        case RtlOp::BitXor:
+        case RtlOp::BitXnor: {
+            const Bits lhs = operand(node, 0, width);
+            const Bits rhs = operand(node, 1, width);
+            Bits result(width, aig_false);
+            for (std::uint32_t bit = 0; bit < width; ++bit) {
+                if (node.op == RtlOp::BitAnd) result[bit] = network.make_and(lhs[bit], rhs[bit]);
+                else if (node.op == RtlOp::BitOr) result[bit] = network.make_or(lhs[bit], rhs[bit]);
+                else if (node.op == RtlOp::BitXor) result[bit] = network.make_xor(lhs[bit], rhs[bit]);
+                else result[bit] = network.make_xnor(lhs[bit], rhs[bit]);
+            }
+            return result;
+        }
+        case RtlOp::LogicalAnd:
+        case RtlOp::LogicalOr: {
+            const auto& lhs = values_.at(node.operands.at(0));
+            const auto& rhs = values_.at(node.operands.at(1));
+            const AigLit a = reduce_or(network, lhs);
+            const AigLit b = reduce_or(network, rhs);
+            return Bits{node.op == RtlOp::LogicalAnd ? network.make_and(a, b) : network.make_or(a, b)};
+        }
+        case RtlOp::Equal:
+        case RtlOp::NotEqual: {
+            const auto lhs = operand(node, 0, std::max(values_.at(node.operands.at(0)).size(),
+                                                       values_.at(node.operands.at(1)).size()));
+            const auto rhs = operand(node, 1, static_cast<std::uint32_t>(lhs.size()));
+            Bits different(lhs.size(), aig_false);
+            for (std::size_t bit = 0; bit < lhs.size(); ++bit)
+                different[bit] = network.make_xor(lhs[bit], rhs[bit]);
+            const AigLit equal = AigNetwork::invert(reduce_or(network, different));
+            return Bits{node.op == RtlOp::Equal ? equal : AigNetwork::invert(equal)};
+        }
+        case RtlOp::Less:
+        case RtlOp::LessEqual:
+        case RtlOp::Greater:
+        case RtlOp::GreaterEqual: {
+            const auto lhs_id = node.operands.at(0);
+            const auto rhs_id = node.operands.at(1);
+            const bool is_signed = source_.nodes.at(lhs_id).is_signed && source_.nodes.at(rhs_id).is_signed;
+            const auto lhs = values_.at(lhs_id);
+            const auto rhs = values_.at(rhs_id);
+            AigLit result = aig_false;
+            if (node.op == RtlOp::Less) result = compare_less(network, lhs, rhs, is_signed);
+            else if (node.op == RtlOp::Greater) result = compare_less(network, rhs, lhs, is_signed);
+            else if (node.op == RtlOp::LessEqual) result = AigNetwork::invert(compare_less(network, rhs, lhs, is_signed));
+            else result = AigNetwork::invert(compare_less(network, lhs, rhs, is_signed));
+            return Bits{result};
+        }
+        case RtlOp::ShiftLeft:
+        case RtlOp::ShiftRight: {
+            const Bits data = operand(node, 0, width);
+            const auto& amount = values_.at(node.operands.at(1));
+            return barrel_shift(network, data, amount, width, node.op == RtlOp::ShiftLeft);
+        }
+        case RtlOp::Mux: {
+            const auto condition_id = node.operands.at(0);
+            const auto& condition = values_.at(condition_id);
+            const AigLit select = reduce_or(network, condition);
+            const Bits when_true = operand(node, 1, width);
+            const Bits when_false = operand(node, 2, width);
+            Bits result(width, aig_false);
+            for (std::uint32_t bit = 0; bit < width; ++bit)
+                result[bit] = network.make_mux(select, when_true[bit], when_false[bit]);
+            return result;
+        }
+        case RtlOp::Divide:
+        case RtlOp::Modulo:
+            throw std::runtime_error("division and modulo are not implemented in the initial AIG lowering");
+        }
+        throw std::runtime_error("unknown RTL operation");
+    }
+};
+
+std::string format_lit(AigLit lit) {
+    if (lit == aig_false) return "0";
+    if (lit == aig_true) return "1";
+    return std::string((lit & 1U) != 0 ? "!" : "") + "%" + std::to_string(lit >> 1U);
+}
+
+} // namespace
+
+AigLoweringResult AigLowerer::lower(const RtlDesign& design) const {
+    AigLoweringResult result;
+    for (const auto& module : design.modules) {
+        const auto diagnostic_start = result.diagnostics.size();
+        ModuleLowerer lowerer(module, result.diagnostics);
+        if (lowerer.run()) {
+            auto lowered_module = lowerer.take_result();
+            lowered_module.network.compact(lowered_module.assignments);
+            result.design.modules.push_back(std::move(lowered_module));
+        }
+        else if (result.diagnostics.size() == diagnostic_start)
+            result.diagnostics.push_back({DiagnosticSeverity::Error, "AIG0005",
+                "failed to lower RTL module '" + module.name + "' into an AIG", {}});
+    }
+    return result;
 }
 
 std::string dump_aig_design(const AigDesign& design) {
-    std::ostringstream output;
+    std::ostringstream out;
     for (const auto& module : design.modules) {
-        output << "module " << module.name << '\n';
-        for (const auto& node : module.nodes) {
-            if (node.kind == AigNodeKind::ConstantFalse) {
-                output << "  %0 = false\n";
-            } else if (node.kind == AigNodeKind::Input) {
-                output << "  %" << node.id << " = input " << node.name << '\n';
-            } else {
-                output << "  %" << node.id << " = and "
-                       << literal_name(node.lhs) << ' ' << literal_name(node.rhs) << '\n';
+        out << "module " << module.name << '\n';
+        for (const auto& port : module.ports) {
+            out << "  port " << port_direction_name(port.direction) << ' ' << port.name
+                << " : " << (port.is_signed ? 's' : 'u') << port.width << '\n';
+        }
+        const auto& nodes = module.network.nodes();
+        for (std::size_t id = 1; id < nodes.size(); ++id) {
+            const auto& node = nodes[id];
+            out << "  %" << id << " = ";
+            if (node.kind == AigNodeKind::Input)
+                out << "input " << node.input_name << '[' << node.input_bit << ']';
+            else
+                out << "and " << format_lit(node.lhs) << ' ' << format_lit(node.rhs);
+            out << '\n';
+        }
+        for (const auto& assignment : module.assignments) {
+            out << "  assign " << assignment.target << " = ";
+            if (assignment.bits.size() > 1) out << '{';
+            for (std::size_t index = assignment.bits.size(); index > 0; --index) {
+                if (index != assignment.bits.size()) out << ", ";
+                out << format_lit(assignment.bits[index - 1]);
             }
+            if (assignment.bits.size() > 1) out << '}';
+            out << " : " << (assignment.target_is_signed ? 's' : 'u') << assignment.target_width << '\n';
         }
-        for (const auto& port_bit : module.outputs) {
-            output << "  output " << port_bit.port_name << '[' << port_bit.bit_index
-                   << "] = " << literal_name(port_bit.literal) << '\n';
-        }
-        output << "endmodule\n";
+        out << "  AIG inputs=" << module.network.input_count()
+            << " and_nodes=" << module.network.and_count() << '\n';
+        out << "endmodule\n";
     }
-    return output.str();
+    return out.str();
 }
 
 } // namespace synvanta

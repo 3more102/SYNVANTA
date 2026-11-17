@@ -38,11 +38,12 @@
 
 - [x] Initial bit-level AIG representation with complemented edges.
 - [x] Lower supported combinational RTL operations into AIG nodes.
-- [x] Structural hashing of AND nodes and constant/identity simplification.
-- [ ] Multiply, divide, and modulo lowering.
+- [x] Structural hashing, constant simplification, and output-cone sweeping.
+- [x] Reference-functional tests for add/subtract, muxes, comparisons, shifts, and multiply.
+- [ ] Divide and modulo lowering.
 - [ ] Multi-level AIG rewriting and balancing.
 - [ ] Sequential boundary modelling.
-- [ ] Equivalence-oriented regression tests.
+- [ ] Formal equivalence checking.
 
 ## Phase 4 — ASIC library and constraints
 

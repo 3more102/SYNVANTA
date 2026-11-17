@@ -4,66 +4,81 @@
 #include "synvanta/rtl_ir.hpp"
 
 #include <cstdint>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace synvanta {
 
-using AigLiteral = std::uint32_t;
+using AigLit = std::uint32_t;
+inline constexpr AigLit aig_false = 0;
+inline constexpr AigLit aig_true = 1;
 
-inline constexpr AigLiteral aig_false = 0U;
-inline constexpr AigLiteral aig_true = 1U;
-inline constexpr AigLiteral aig_invert(AigLiteral literal) noexcept {
-    return literal ^ 1U;
-}
-
-enum class AigNodeKind {
-    ConstantFalse,
-    Input,
-    And
-};
+enum class AigNodeKind { Constant, Input, And };
 
 struct AigNode {
-    std::uint32_t id{0};
-    AigNodeKind kind{AigNodeKind::ConstantFalse};
-    AigLiteral lhs{aig_false};
-    AigLiteral rhs{aig_false};
-    std::string name;
+    AigNodeKind kind{AigNodeKind::Constant};
+    AigLit lhs{0};
+    AigLit rhs{0};
+    std::string input_name;
+    std::uint32_t input_bit{0};
 };
 
-struct AigPortBit {
-    std::string port_name;
-    std::uint32_t bit_index{0};
-    AigLiteral literal{aig_false};
+struct AigAssignment;
+
+class AigNetwork {
+public:
+    AigNetwork();
+
+    static constexpr AigLit invert(AigLit lit) noexcept { return lit ^ 1U; }
+    AigLit input(const std::string& name, std::uint32_t bit);
+    AigLit make_and(AigLit lhs, AigLit rhs);
+    AigLit make_or(AigLit lhs, AigLit rhs);
+    AigLit make_xor(AigLit lhs, AigLit rhs);
+    AigLit make_xnor(AigLit lhs, AigLit rhs);
+    AigLit make_mux(AigLit select, AigLit when_true, AigLit when_false);
+
+    const std::vector<AigNode>& nodes() const noexcept { return nodes_; }
+    std::size_t input_count() const noexcept { return input_index_.size(); }
+    std::size_t and_count() const noexcept;
+    void compact(std::vector<AigAssignment>& assignments);
+
+private:
+    std::vector<AigNode> nodes_;
+    std::map<std::pair<std::string, std::uint32_t>, AigLit> input_index_;
+    std::map<std::pair<AigLit, AigLit>, AigLit> and_hash_;
+};
+
+struct AigAssignment {
+    std::string target;
+    std::vector<AigLit> bits;
+    std::uint32_t target_width{1};
+    bool target_is_signed{false};
 };
 
 struct AigModule {
     std::string name;
-    // Node zero is the constant-false node. Constant true is its complemented literal.
-    std::vector<AigNode> nodes;
-    std::vector<AigPortBit> inputs;
-    std::vector<AigPortBit> outputs;
+    std::vector<RtlPort> ports;
+    AigNetwork network;
+    std::vector<AigAssignment> assignments;
 };
 
 struct AigDesign {
     std::vector<AigModule> modules;
 };
 
-struct AigBuildResult {
+struct AigLoweringResult {
     AigDesign design;
     std::vector<Diagnostic> diagnostics;
-
-    [[nodiscard]] bool success() const noexcept {
-        return !has_errors(diagnostics);
-    }
+    bool success() const noexcept { return !has_errors(diagnostics); }
 };
 
-class AigBuilder {
+class AigLowerer {
 public:
-    [[nodiscard]] AigBuildResult build(const RtlDesign& design) const;
+    AigLoweringResult lower(const RtlDesign& design) const;
 };
 
-[[nodiscard]] const char* aig_node_kind_name(AigNodeKind kind);
-[[nodiscard]] std::string dump_aig_design(const AigDesign& design);
+std::string dump_aig_design(const AigDesign& design);
 
 } // namespace synvanta
