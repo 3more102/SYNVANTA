@@ -10,33 +10,33 @@ SYNVANTA is a compiler project focused on building an independently implemented 
 
 Requirements: CMake 3.20+ and a C++20 compiler.
 
-\`\`\`bash
+```bash
 cmake -S . -B build -DSYNVANTA_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-\`\`\`
+```
 
 ## CLI
 
-\`\`\`bash
+```bash
 synvanta --version
 synvanta --help
 synvanta check examples/half_adder.sv
 synvanta inspect examples/mux2.sv
 synvanta ir examples/half_adder.sv
 synvanta optimize examples/half_adder.sv
-\`\`\`
+```
 
-- \`check\` runs lexical, syntax, and basic semantic checks.
-- \`inspect\` prints module interfaces and assignment counts.
-- \`ir\` lowers the supported combinational subset into a typed, technology-independent RTL IR and prints it.
-- \`optimize\` applies structural common-subexpression elimination and removes logic that cannot affect a module output, then prints the optimized IR.
+- `check` runs lexical, syntax, and basic semantic checks.
+- `inspect` prints module interfaces and assignment counts.
+- `ir` lowers the supported combinational subset into a typed, technology-independent RTL IR and prints it.
+- `optimize` applies structural common-subexpression elimination and removes logic that cannot affect a module output, then prints the optimized IR.
 
 The optimizer is an early graph-cleanup pass. It does not yet perform arithmetic constant folding, Boolean rewriting, or technology mapping.
 
 ## Architecture
 
-\`\`\`text
+```text
 SystemVerilog -> Lexer -> Parser -> AST
                                   |
                            Elaboration
@@ -54,7 +54,7 @@ SystemVerilog -> Lexer -> Parser -> AST
                      Technology mapping
                                   |
                   Mapped Verilog + reports
-\`\`\`
+```
 
 See [architecture overview](docs/architecture/overview.md), [roadmap](docs/roadmap.md), and [supported language subset](docs/supported-systemverilog.md).
 

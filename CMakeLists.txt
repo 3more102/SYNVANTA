@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(synvanta_core src/lexer.cpp src/parser.cpp src/semantic.cpp src/lowering.cpp src/rtl_ir.cpp src/optimizer.cpp src/compiler.cpp)
-target_include_directories(synvanta_core PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(synvanta_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 if(MSVC)
     target_compile_options(synvanta_core PRIVATE /W4 /permissive-)

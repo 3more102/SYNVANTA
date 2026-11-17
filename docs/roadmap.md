@@ -7,7 +7,7 @@
 - [x] SystemVerilog lexer for the initial subset.
 - [x] Module/port/continuous-assignment AST.
 - [x] Pratt expression parser.
-- [x] CLI \`check\` and \`inspect\` commands.
+- [x] CLI `check` and `inspect` commands.
 - [x] Unit tests and CI workflow.
 - [x] Module-local symbol table and basic semantic diagnostics.
 
@@ -17,7 +17,7 @@
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
 - [ ] Bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.
-- [ ] \`always_comb\` and synthesizable procedural assignment lowering.
+- [ ] `always_comb` and synthesizable procedural assignment lowering.
 - [ ] Versioned supported-SystemVerilog specification.
 
 ## Phase 2 — Technology-independent RTL IR
