@@ -22,6 +22,6 @@ This document describes parser bring-up support. Parsing support does not imply 
 - Packed-range bounds must be integer literals.
 - Assignment targets must be simple identifiers; part-select and concatenation l-values are not supported.
 - Procedural blocks, functions, tasks, generate constructs, interfaces, packages, structs, unions, enums, unpacked arrays, and user-defined types are not yet supported.
-- Basic module-local name resolution and continuous-driver checks are implemented. Full type checking, width inference, expression sizing, and four-state semantic evaluation are not yet implemented.
+- Basic module-local name resolution and continuous-driver checks are implemented. The initial RTL IR carries width and signedness metadata, but its expression-sizing rules are limited and are not a complete implementation of IEEE SystemVerilog sizing, casting, or four-state semantics.
 
 Unsupported constructs produce diagnostics. A successful parse is not proof that a design is synthesizable or semantically complete.

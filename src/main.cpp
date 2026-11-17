@@ -1,4 +1,5 @@
 #include "synvanta/compiler.hpp"
+#include "synvanta/lowering.hpp"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -6,7 +7,7 @@
 namespace {
 void usage(std::ostream& o){
     o<<"SYNVANTA 0.1.0 - independent SystemVerilog-to-ASIC synthesis compiler\n\n"
-     <<"Usage:\n  synvanta --version\n  synvanta --help\n  synvanta check <input.sv>\n  synvanta inspect <input.sv>\n";
+     <<"Usage:\n  synvanta --version\n  synvanta --help\n  synvanta check <input.sv>\n  synvanta inspect <input.sv>\n  synvanta ir <input.sv>\n";
 }
 int run(const std::string& command,const std::string& path){
     std::ifstream in(path,std::ios::binary);if(!in){std::cerr<<"error: cannot open input file: "<<path<<'\n';return 2;}
@@ -15,6 +16,14 @@ int run(const std::string& command,const std::string& path){
     for(const auto& d:result.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
     if(!result.success())return 1;
     if(command=="check"){std::cout<<"SYNVANTA: syntax and semantic checks passed ("<<result.unit.modules.size()<<" module(s)).\n";return 0;}
+    if(command=="ir"){
+        const synvanta::RtlLowerer lowerer;
+        const auto lowered=lowerer.lower(result.unit);
+        for(const auto& d:lowered.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
+        if(!lowered.success())return 1;
+        std::cout<<synvanta::dump_rtl_design(lowered.design);
+        return 0;
+    }
     for(const auto& m:result.unit.modules){
         std::cout<<"module "<<m.name<<"\n  ports: "<<m.ports.size()<<'\n';
         for(const auto& p:m.ports){
@@ -30,6 +39,6 @@ int run(const std::string& command,const std::string& path){
 int main(int argc,char** argv){
     if(argc==2&&std::string(argv[1])=="--version"){std::cout<<"SYNVANTA 0.1.0\n";return 0;}
     if(argc==2&&std::string(argv[1])=="--help"){usage(std::cout);return 0;}
-    if(argc==3){const std::string cmd(argv[1]);if(cmd=="check"||cmd=="inspect")return run(cmd,argv[2]);}
+    if(argc==3){const std::string cmd(argv[1]);if(cmd=="check"||cmd=="inspect"||cmd=="ir")return run(cmd,argv[2]);}
     usage(std::cerr);return 2;
 }

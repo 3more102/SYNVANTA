@@ -4,7 +4,7 @@
 
 SYNVANTA is a compiler project focused on building an independently implemented ASIC synthesis engine. The initial engineering target is a reliable SystemVerilog frontend and a clean architecture that can grow into elaboration, RTL lowering, Boolean optimization, Liberty ingestion, technology mapping, and mapped-netlist generation.
 
-> **Current status: 0.1 frontend bring-up.** The frontend lexes/parses a documented SystemVerilog subset, builds an AST, resolves module-local names, checks continuous-assignment targets and drivers, and warns about undriven outputs. It does not yet lower RTL into a synthesis IR, optimize logic, read Liberty libraries, or map standard cells.
+> **Current status: 0.1 frontend and early RTL IR.** SYNVANTA lexes/parses a documented SystemVerilog subset, performs module-local semantic checks, and lowers supported continuous assignments into a typed bit-vector RTL IR. It does not yet optimize logic, read Liberty libraries, map standard cells, or emit mapped netlists.
 
 ## Build
 
@@ -23,9 +23,10 @@ synvanta --version
 synvanta --help
 synvanta check examples/half_adder.sv
 synvanta inspect examples/mux2.sv
+synvanta ir examples/half_adder.sv
 ```
 
-`check` validates lexical and syntactic structure for the supported subset. `inspect` prints parsed module ports and continuous-assignment counts.
+`check` runs lexical, syntax, and basic semantic checks. `inspect` prints module interfaces and assignment counts. `ir` lowers the supported combinational subset into a typed, technology-independent RTL IR and prints it.
 
 ## Architecture
 

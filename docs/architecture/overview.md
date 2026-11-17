@@ -26,7 +26,7 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
 
 ## Initial implementation slice (0.1)
 
-The first increment establishes a compiler executable, source locations, diagnostics, a standalone lexer, a recursive-descent/Pratt parser, an AST for modules and continuous assignments, and automated tests. It intentionally does not claim to synthesize gates or map a cell library yet.
+The first increment establishes a compiler executable, source locations, diagnostics, a standalone lexer, a recursive-descent/Pratt parser, module-local semantic checks, an AST, and a typed RTL IR for the supported continuous-assignment subset. It intentionally does not claim to optimize gates or map a cell library yet.
 
 ## Architectural rules
 

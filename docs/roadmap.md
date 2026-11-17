@@ -22,10 +22,14 @@
 
 ## Phase 2 — Technology-independent RTL IR
 
-- [ ] Typed bit-vector RTL IR with explicit widths and signedness.
-- [ ] Lower continuous and procedural assignments into the IR.
+- [x] Initial typed bit-vector RTL IR with explicit widths and signedness metadata.
+- [x] Lower supported continuous assignments into the IR.
+- [x] Insert explicit resize nodes for assignment width/signedness conversion.
+- [x] Detect combinational dependency cycles during lowering.
+- [x] Deterministic textual IR dump and lowering regression tests.
+- [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
+- [ ] Lower procedural assignments and sequential processes into the IR.
 - [ ] Constant propagation, dead-code elimination, and common-subexpression elimination.
-- [ ] Deterministic IR dump and round-trip tests.
 
 ## Phase 3 — Boolean network and optimization
 
