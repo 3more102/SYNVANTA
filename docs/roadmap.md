@@ -33,10 +33,14 @@
 
 ## Phase 3 — Boolean network and optimization
 
-- [ ] Lower combinational RTL into an AIG or equivalent Boolean network.
-- [ ] Structural hashing and rewriting.
+- [x] Lower supported combinational RTL into an AIG with complemented edges.
+- [x] Structural hashing for AND nodes and basic Boolean identity simplification.
+- [x] Lower add/subtract, multiply, bitwise/logical operations, comparisons, shifts, and muxes.
+- [x] Reference-functional tests for arithmetic, muxing, comparison, and shifts.
+- [ ] AIG balancing, rewriting, and refactoring passes.
 - [ ] Observability-based cleanup and sequential boundary modelling.
-- [ ] Equivalence-oriented regression tests.
+- [ ] Formal equivalence hooks and larger randomized regression campaigns.
+- [ ] Division/modulo lowering.
 
 ## Phase 4 — ASIC library and constraints
 
@@ -62,4 +66,4 @@
 
 ## Current release boundary
 
-Version 0.1 is a parser bring-up milestone only. It is not yet a synthesis tool and does not produce optimized or technology-mapped netlists.
+Version 0.2 demonstrates frontend-to-RTL-IR-to-AIG lowering for a restricted combinational subset. It is not yet a standard-cell synthesis tool: no Liberty/SDC ingestion, cell mapping, timing analysis, or mapped-netlist generation is implemented.

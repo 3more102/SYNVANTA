@@ -4,7 +4,7 @@
 
 SYNVANTA is an independently implemented SystemVerilog-to-standard-cell ASIC synthesis compiler. It is not a wrapper around a commercial synthesis engine. External tools may be used as optional reference points for validation, but they are not part of the synthesis implementation.
 
-## Planned compilation pipeline
+## Compilation pipeline
 
 ```text
 SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
@@ -13,7 +13,7 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
                          Typed RTL IR
                                   |
-                       Boolean network
+                    AIG / Boolean network
                                   |
                     Logic optimization
                                   |
@@ -24,13 +24,21 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                   Mapped Verilog + reports
 ```
 
-## Initial implementation slice (0.1)
+## Implemented slices
 
-The first increment establishes a compiler executable, source locations, diagnostics, a standalone lexer, a recursive-descent/Pratt parser, module-local semantic checks, an AST, and a typed RTL IR for the supported continuous-assignment subset. It intentionally does not claim to optimize gates or map a cell library yet.
+### 0.1 — frontend and typed RTL IR
+
+The compiler has source locations, structured diagnostics, a lexer, a recursive-descent/Pratt parser, module-local semantic checks, an AST, and a typed RTL IR for the supported continuous-assignment subset.
+
+### 0.2 — initial AIG lowering
+
+The AIG stage converts typed combinational RTL operations into a graph containing primary-input nodes and two-input AND nodes. Inversion is represented on edges, so NOT, OR, XOR, XNOR, and mux logic are constructed from AND nodes and complemented literals. AND construction uses structural hashing and basic constant/identity simplification.
+
+The first lowering pass includes ripple-carry add/subtract, truncated shift-add multiplication, bitwise/logical operations, equality and magnitude comparisons, logical shifts, and muxes. Division and modulo are diagnosed as unsupported in this stage.
 
 ## Architectural rules
 
-1. Keep parsing, elaboration, RTL semantics, optimization, mapping, and output generation in separate modules.
+1. Keep parsing, elaboration, RTL semantics, Boolean lowering, optimization, mapping, and output generation in separate modules.
 2. Preserve source locations through every intermediate representation.
 3. Define deterministic intermediate representations and stable serialization before optimizing them.
 4. Treat width, signedness, four-state values, and expression sizing as language semantics.
@@ -42,7 +50,7 @@ The first increment establishes a compiler executable, source locations, diagnos
 
 - Core implementation: C++20.
 - Build system: CMake 3.20+.
-- Tests: dependency-free C++ test harness initially.
+- Tests: dependency-free C++ test harness.
 - CI: Linux build/test workflow.
 - CLI: `synvanta`.
 
@@ -50,5 +58,6 @@ The first increment establishes a compiler executable, source locations, diagnos
 
 - SystemVerilog is a large language; a documented synthesizable subset is mandatory.
 - Expression sizing, signed arithmetic, packed arrays, procedural blocks, and reset semantics need dedicated specifications and tests.
+- AIG rewriting and mapping quality require benchmark suites and reproducible QoR measurement.
 - Liberty parsing and timing arcs must follow the relevant Liberty language subset.
 - Technology mapping quality requires benchmark suites and reproducible PPA measurement.

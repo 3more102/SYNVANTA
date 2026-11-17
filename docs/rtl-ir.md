@@ -44,10 +44,17 @@ These are initial implementation rules, not a claim of full IEEE 1800 expression
 - Inout ports are rejected by this initial lowering stage.
 - Node IDs are local to each module and assigned in deterministic creation order.
 
+## AIG boundary
+
+The `aig` CLI command consumes this RTL IR and lowers supported combinational nodes into an AND-inverter graph. The AIG uses complemented edge literals and structurally hashes AND nodes. It is still technology-independent: it does not contain Liberty cell names, timing arcs, drive strengths, or physical area.
+
+Division and modulo remain valid RTL IR operations but are currently rejected by the AIG lowerer with an explicit diagnostic.
+
 ## CLI
 
 ```bash
 synvanta ir examples/half_adder.sv
+synvanta aig examples/half_adder.sv
 ```
 
-The textual dump is intended for debugging and regression tests. A stable machine-readable serialization format will be defined separately before optimization passes depend on it.
+The textual dumps are intended for debugging and regression tests. A stable machine-readable serialization format will be defined separately before optimization passes depend on it.

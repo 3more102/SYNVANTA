@@ -2,9 +2,9 @@
 
 **Independent SystemVerilog-to-standard-cell ASIC synthesis compiler.**
 
-SYNVANTA is a compiler project focused on building an independently implemented ASIC synthesis engine. The initial engineering target is a reliable SystemVerilog frontend and a clean architecture that can grow into elaboration, RTL lowering, Boolean optimization, Liberty ingestion, technology mapping, and mapped-netlist generation.
+SYNVANTA is an independently implemented ASIC synthesis engine. Its long-term target is a commercial-quality SystemVerilog-to-standard-cell compiler with its own frontend, typed RTL IR, Boolean optimization, Liberty ingestion, technology mapper, and timing-aware synthesis flow.
 
-> **Current status: 0.1 frontend and early RTL IR.** SYNVANTA lexes/parses a documented SystemVerilog subset, performs module-local semantic checks, and lowers supported continuous assignments into a typed bit-vector RTL IR. It does not yet optimize logic, read Liberty libraries, map standard cells, or emit mapped netlists.
+> **Current status: 0.2 — typed RTL IR and initial AIG lowering.** SYNVANTA lexes and parses a documented SystemVerilog subset, performs module-local semantic checks, lowers supported continuous assignments into a typed bit-vector RTL IR, and converts supported combinational operations into an AND-inverter graph (AIG). It does not yet parse Liberty/SDC, map standard cells, or emit a mapped netlist.
 
 ## Build
 
@@ -24,20 +24,22 @@ synvanta --help
 synvanta check examples/half_adder.sv
 synvanta inspect examples/mux2.sv
 synvanta ir examples/half_adder.sv
+synvanta aig examples/half_adder.sv
 ```
 
-`check` runs lexical, syntax, and basic semantic checks. `inspect` prints module interfaces and assignment counts. `ir` lowers the supported combinational subset into a typed, technology-independent RTL IR and prints it.
+- `check` runs lexical, syntax, and basic semantic checks.
+- `inspect` prints module interfaces and assignment counts.
+- `ir` lowers the supported combinational subset into a typed, technology-independent RTL IR and prints it.
+- `aig` lowers the RTL IR into an AIG and prints primary inputs, AND nodes, complemented edges, and assignments.
 
 ## Architecture
 
 ```text
-SystemVerilog -> Lexer -> Parser -> AST
+SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
-                           Elaboration
+                           Typed RTL IR
                                   |
-                         Typed RTL IR
-                                  |
-                       Boolean network
+                    AIG / Boolean network
                                   |
                     Logic optimization
                                   |
@@ -48,7 +50,7 @@ SystemVerilog -> Lexer -> Parser -> AST
                   Mapped Verilog + reports
 ```
 
-See [architecture overview](docs/architecture/overview.md), [roadmap](docs/roadmap.md), and [supported language subset](docs/supported-systemverilog.md).
+See [architecture overview](docs/architecture/overview.md), [RTL IR](docs/rtl-ir.md), [AIG design](docs/aig.md), [roadmap](docs/roadmap.md), and [supported language subset](docs/supported-systemverilog.md).
 
 ## Project principles
 
@@ -57,6 +59,13 @@ See [architecture overview](docs/architecture/overview.md), [roadmap](docs/roadm
 - Source-location preservation across compiler stages.
 - Deterministic intermediate representations and reproducible tests.
 - Correctness and semantic validation before PPA optimization.
+- No area, timing, or power claims before library-aware analysis exists.
+
+## Current validation
+
+The unit suite includes reference simulation of half-adder logic, four-bit addition/subtraction, muxing, signed comparison, shifts, and multiplication. Structural hashing and constant simplification are checked directly. Division and modulo currently produce an explicit AIG-lowering diagnostic.
+
+This is not yet formal equivalence, Liberty mapping, PPA signoff, or tapeout-ready software.
 
 ## License
 
