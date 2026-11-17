@@ -13,9 +13,11 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
                          Typed RTL IR
                                   |
-                       Boolean network
+                  RTL optimization / lowering
                                   |
-                    Logic optimization
+                   AIG / Boolean network
+                                  |
+                    AIG rewriting and mapping
                                   |
                 Liberty + SDC + constraints
                                   |
@@ -24,9 +26,11 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                   Mapped Verilog + reports
 ```
 
-## Initial implementation slice (0.1)
+## Implemented foundation
 
-The first increment establishes a compiler executable, source locations, diagnostics, a standalone lexer, a recursive-descent/Pratt parser, module-local semantic checks, an AST, and a typed RTL IR for the supported continuous-assignment subset. It intentionally does not claim to optimize gates or map a cell library yet.
+The v0.1 foundation provides source locations, structured diagnostics, a lexer, parser, AST, module-local semantic checks, and a typed RTL IR for the supported continuous-assignment subset. The RTL optimizer performs initial constant folding, structural common-subexpression elimination, and dead-node removal.
+
+The next engineering increment adds a complemented-edge AIG representation. The builder bit-blasts supported combinational RTL operations into a structurally hashed network and exposes it through the CLI AIG dump command. This is an intermediate synthesis representation, not a mapped netlist.
 
 ## Architectural rules
 
@@ -37,18 +41,20 @@ The first increment establishes a compiler executable, source locations, diagnos
 5. Make unsupported constructs explicit diagnostics. Never silently reinterpret unsupported RTL.
 6. Keep synthesis algorithms independently implemented and independently tested.
 7. Validate each optimization with semantic regression tests and optional equivalence checking.
+8. Keep generic Boolean-network construction separate from technology mapping and timing-driven optimization.
 
 ## Technology baseline
 
 - Core implementation: C++20.
 - Build system: CMake 3.20+.
-- Tests: dependency-free C++ test harness initially.
+- Tests: dependency-free C++ test harness, including exhaustive small-vector AIG truth tables.
 - CI: Linux build/test workflow.
-- CLI: `synvanta`.
+- CLI: synvanta.
 
 ## Key design risks
 
 - SystemVerilog is a large language; a documented synthesizable subset is mandatory.
 - Expression sizing, signed arithmetic, packed arrays, procedural blocks, and reset semantics need dedicated specifications and tests.
+- AIG construction currently uses a two-state model; X/Z semantics require an explicit policy.
 - Liberty parsing and timing arcs must follow the relevant Liberty language subset.
 - Technology mapping quality requires benchmark suites and reproducible PPA measurement.
