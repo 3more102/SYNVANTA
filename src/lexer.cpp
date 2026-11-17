@@ -58,11 +58,11 @@ const char* token_kind_name(TokenKind k) {
 }
 Lexer::Lexer(std::string_view s,std::string f):source_(s),filename_(std::move(f)){}
 bool Lexer::at_end(std::size_t n) const{return offset_+n>=source_.size();}
-char Lexer::peek(std::size_t n) const{return at_end(n)?'\\0':source_[offset_+n];}
+char Lexer::peek(std::size_t n) const{return at_end(n)?'\0':source_[offset_+n];}
 char Lexer::advance(){
-    if(at_end())return '\\0';
+    if(at_end())return '\0';
     const char c=source_[offset_++];
-    if(c=='\\n'){++line_;column_=1;}else{++column_;}
+    if(c=='\n'){++line_;column_=1;}else{++column_;}
     return c;
 }
 bool Lexer::match(char c){if(at_end()||peek()!=c)return false;advance();return true;}
@@ -74,7 +74,7 @@ void Lexer::skip_trivia(){
     for(;;){
         if(at_end())return;
         if(std::isspace(static_cast<unsigned char>(peek()))!=0){advance();continue;}
-        if(peek()=='/'&&peek(1)=='/'){while(!at_end()&&peek()!='\\n')advance();continue;}
+        if(peek()=='/'&&peek(1)=='/'){while(!at_end()&&peek()!='\n')advance();continue;}
         if(peek()=='/'&&peek(1)=='*'){
             const auto start=location();advance();advance();bool closed=false;
             while(!at_end()){
@@ -92,14 +92,14 @@ Token Lexer::make_token(TokenKind k,std::size_t s,SourceLocation l) const{
 }
 Token Lexer::scan_number(){
     const auto start=offset_;const auto loc=location();
-    if(peek()=='\\''){
+    if(peek()=='\''){
         advance();
         if(peek()=='0'||peek()=='1'||peek()=='x'||peek()=='X'||peek()=='z'||peek()=='Z')advance();
         else report("LEX0003","invalid unbased unsized literal",loc);
         return make_token(TokenKind::Number,start,loc);
     }
     while(!at_end()&&(std::isdigit(static_cast<unsigned char>(peek()))!=0||peek()=='_'))advance();
-    if(peek()=='\\''){
+    if(peek()=='\''){
         advance();if(peek()=='s'||peek()=='S')advance();
         if(peek()=='b'||peek()=='B'||peek()=='o'||peek()=='O'||peek()=='d'||peek()=='D'||peek()=='h'||peek()=='H'){
             advance();while(!at_end()&&based_digit(peek()))advance();
@@ -115,7 +115,7 @@ Token Lexer::scan_token(){
         const auto it=keywords.find(text);
         return make_token(it==keywords.end()?TokenKind::Identifier:it->second,start,loc);
     }
-    if(std::isdigit(static_cast<unsigned char>(c))!=0||c=='\\''){--offset_;--column_;return scan_number();}
+    if(std::isdigit(static_cast<unsigned char>(c))!=0||c=='\''){--offset_;--column_;return scan_number();}
     auto two=[&](char expected,TokenKind yes,TokenKind no){return make_token(match(expected)?yes:no,start,loc);};
     switch(c){
     case '(':return make_token(TokenKind::LParen,start,loc); case ')':return make_token(TokenKind::RParen,start,loc);
