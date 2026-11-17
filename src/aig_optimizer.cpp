@@ -171,7 +171,6 @@ std::optional<AigModule> balance_module(const AigModule& source,
                 pending.push_back(source.nodes[child_id].rhs);
                 pending.push_back(source.nodes[child_id].lhs);
             } else {
-                remap[child_id] ^= 0U;
                 leaves.push_back(remap[child_id] ^ (literal & 1U));
             }
         }
