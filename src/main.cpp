@@ -30,6 +30,7 @@ int run(const std::string& command,const std::string& path){
         std::cout<<"# optimization: folded="<<optimized.stats.constants_folded
                  <<" cse_removed="<<optimized.stats.common_subexpressions_removed
                  <<" dead_removed="<<optimized.stats.dead_nodes_removed
+                 <<" assignments_removed="<<optimized.stats.assignments_removed
                  <<" nodes="<<optimized.stats.nodes_before<<"->"<<optimized.stats.nodes_after<<'\n';
         std::cout<<synvanta::dump_rtl_design(optimized.design);
         return 0;
