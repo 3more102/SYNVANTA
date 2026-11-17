@@ -31,7 +31,7 @@ void Parser::report(std::string c,std::string m,const SourceLocation& l){
 void Parser::synchronize_module_item(){
     while(!at_end()&&!check(TokenKind::Endmodule)){
         if(previous().kind==TokenKind::Semicolon)return;
-        if(check(TokenKind::Assign)||check(TokenKind::Wire)||check(TokenKind::Logic)||check(TokenKind::Reg))return;
+        if(check(TokenKind::Assign)||check(TokenKind::Wire)||check(TokenKind::Logic)||check(TokenKind::Reg)||check(TokenKind::Bit))return;
         advance();
     }
 }

@@ -12,7 +12,7 @@ enum class ExprKind { Identifier, Number, Unary, Binary, Conditional };
 struct PackedRange { int left{0}; int right{0}; };
 struct Port {
     PortDirection direction{PortDirection::Input};
-    NetKind net_kind{NetKind::Logic};
+    NetKind net_kind{NetKind::Wire};
     bool is_signed{false};
     std::optional<PackedRange> range;
     std::string name;

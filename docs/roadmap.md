@@ -14,6 +14,7 @@
 ## Phase 1 — Language semantics and elaboration
 
 - [x] Module-local symbol table and duplicate/undeclared identifier checks.
+- [x] Continuous-driver checks, including undriven-output warnings.
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
 - [ ] Bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.

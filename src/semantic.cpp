@@ -3,7 +3,6 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace synvanta {
@@ -12,6 +11,7 @@ namespace {
 struct Symbol {
     bool is_port{false};
     PortDirection direction{PortDirection::Input};
+    NetKind net_kind{NetKind::Wire};
     SourceLocation location;
 };
 
@@ -44,7 +44,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
 
         std::unordered_map<std::string, Symbol> symbols;
         for (const auto& port : module.ports) {
-            const auto [it, inserted] = symbols.emplace(port.name, Symbol{true, port.direction, port.location});
+            const auto [it, inserted] = symbols.emplace(
+                port.name, Symbol{true, port.direction, port.net_kind, port.location});
             (void)it;
             if (!inserted) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0002",
@@ -52,7 +53,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
             }
         }
         for (const auto& net : module.nets) {
-            const auto [it, inserted] = symbols.emplace(net.name, Symbol{false, PortDirection::Input, net.location});
+            const auto [it, inserted] = symbols.emplace(
+                net.name, Symbol{false, PortDirection::Input, net.net_kind, net.location});
             (void)it;
             if (!inserted) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0002",
@@ -60,39 +62,54 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(const CompilationUnit& unit) c
             }
         }
 
-        std::unordered_set<std::string> driven_targets;
+        std::unordered_map<std::string, std::size_t> driver_counts;
         for (const auto& assignment : module.assignments) {
             const auto target = symbols.find(assignment.lhs);
             if (target == symbols.end()) {
                 report(diagnostics, DiagnosticSeverity::Error, "SEM0003",
                        "assignment target '" + assignment.lhs + "' is not declared", assignment.location);
-            } else if (target->second.is_port && target->second.direction == PortDirection::Input) {
-                report(diagnostics, DiagnosticSeverity::Error, "SEM0004",
-                       "continuous assignment cannot drive input port '" + assignment.lhs + "'", assignment.location);
-            }
+            } else {
+                if (target->second.is_port && target->second.direction == PortDirection::Input) {
+                    report(diagnostics, DiagnosticSeverity::Error, "SEM0004",
+                           "continuous assignment cannot drive input port '" + assignment.lhs + "'",
+                           assignment.location);
+                }
 
-            if (!driven_targets.insert(assignment.lhs).second) {
-                report(diagnostics, DiagnosticSeverity::Error, "SEM0005",
-                       "multiple continuous assignments drive '" + assignment.lhs + "'", assignment.location);
+                const auto [count_it, inserted] = driver_counts.emplace(assignment.lhs, 0U);
+                (void)inserted;
+                ++count_it->second;
+
+                // Multiple continuous drivers are valid for nets. Variable-like
+                // declarations in this frontend are restricted to one driver.
+                if (count_it->second > 1 && target->second.net_kind != NetKind::Wire) {
+                    report(diagnostics, DiagnosticSeverity::Error, "SEM0005",
+                           "multiple continuous assignments drive variable-like object '" +
+                               assignment.lhs + "'",
+                           assignment.location);
+                }
             }
 
             visit_identifiers(assignment.rhs.get(), [&](const Expr& identifier) {
                 if (symbols.find(identifier.text) == symbols.end()) {
                     report(diagnostics, DiagnosticSeverity::Error, "SEM0006",
-                           "identifier '" + identifier.text + "' is not declared in module '" + module.name + "'",
+                           "identifier '" + identifier.text + "' is not declared in module '" +
+                               module.name + "'",
                            identifier.location);
                 }
             });
         }
 
         for (const auto& port : module.ports) {
-            if (port.direction == PortDirection::Output && driven_targets.find(port.name) == driven_targets.end()) {
+            if (port.direction == PortDirection::Output &&
+                driver_counts.find(port.name) == driver_counts.end()) {
                 report(diagnostics, DiagnosticSeverity::Warning, "SEM1001",
-                       "output port '" + port.name + "' has no continuous driver in the supported subset",
+                       "output port '" + port.name +
+                           "' has no continuous driver in the supported subset",
                        port.location);
             }
         }
     }
     return diagnostics;
 }
+
 } // namespace synvanta

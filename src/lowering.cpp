@@ -69,7 +69,16 @@ public:
             signals_.emplace(p.name,info); result.ports.push_back({p.name,p.direction,info.width,info.is_signed});
         }
         for(const auto& n:source_.nets)signals_.emplace(n.name,SignalInfo{signal_width(n.range),n.is_signed,false,false});
-        for(const auto& a:source_.assignments)drivers_.emplace(a.lhs,&a);
+        for (const auto& assignment : source_.assignments) {
+            const auto [it, inserted] = drivers_.emplace(assignment.lhs, &assignment);
+            (void)it;
+            if (!inserted) {
+                report(DiagnosticSeverity::Error, "LOW0009",
+                       "multiple continuous drivers for '" + assignment.lhs +
+                           "' cannot be represented by the current RTL IR",
+                       assignment.location);
+            }
+        }
         for(const auto& p:source_.ports){
             if(p.direction==PortDirection::Input){
                 const auto info=signals_.at(p.name);
