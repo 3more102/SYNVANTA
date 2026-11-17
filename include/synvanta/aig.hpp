@@ -3,6 +3,7 @@
 #include "synvanta/diagnostic.hpp"
 #include "synvanta/rtl_ir.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
