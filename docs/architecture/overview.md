@@ -4,7 +4,7 @@
 
 SYNVANTA is an independently implemented SystemVerilog-to-standard-cell ASIC synthesis compiler. It is not a wrapper around a commercial synthesis engine. External tools may be used as optional reference points for validation, but they are not part of the synthesis implementation.
 
-## Planned compilation pipeline
+## Compilation pipeline
 
 ```text
 SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
@@ -13,9 +13,11 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                                   |
                          Typed RTL IR
                                   |
-                       Boolean network
+                     RTL graph optimization
                                   |
-                    Logic optimization
+                      Bit-level AIG network
+                                  |
+                  AIG rewriting and balancing
                                   |
                 Liberty + SDC + constraints
                                   |
@@ -24,13 +26,15 @@ SystemVerilog -> Lexer -> Parser -> AST -> Semantic checks
                   Mapped Verilog + reports
 ```
 
-## Initial implementation slice (0.1)
+## Initial implementation boundary
 
-The first increment establishes a compiler executable, source locations, diagnostics, a standalone lexer, a recursive-descent/Pratt parser, module-local semantic checks, an AST, and a typed RTL IR for the supported continuous-assignment subset. It intentionally does not claim to optimize gates or map a cell library yet.
+The frontend currently supports a documented subset centered on ANSI-style modules and continuous assignments. The typed RTL IR preserves operation widths, signedness metadata, and source locations. The optimizer performs local identity reductions, structural common-subexpression elimination, and output-rooted dead-code elimination.
+
+The initial AIG backend bit-blasts the supported combinational subset into input nodes and structurally hashed AND nodes with complemented edges. It explicitly rejects unsupported arithmetic operators and unknown four-state constants.
 
 ## Architectural rules
 
-1. Keep parsing, elaboration, RTL semantics, optimization, mapping, and output generation in separate modules.
+1. Keep parsing, elaboration, RTL semantics, optimization, AIG lowering, mapping, and output generation in separate modules.
 2. Preserve source locations through every intermediate representation.
 3. Define deterministic intermediate representations and stable serialization before optimizing them.
 4. Treat width, signedness, four-state values, and expression sizing as language semantics.
@@ -50,5 +54,6 @@ The first increment establishes a compiler executable, source locations, diagnos
 
 - SystemVerilog is a large language; a documented synthesizable subset is mandatory.
 - Expression sizing, signed arithmetic, packed arrays, procedural blocks, and reset semantics need dedicated specifications and tests.
+- AIG correctness depends on preserving bit ordering, signed comparisons, resize semantics, and two-state assumptions.
 - Liberty parsing and timing arcs must follow the relevant Liberty language subset.
 - Technology mapping quality requires benchmark suites and reproducible PPA measurement.

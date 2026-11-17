@@ -36,9 +36,12 @@
 
 ## Phase 3 — Boolean network and optimization
 
-- [ ] Lower combinational RTL into an AIG or equivalent Boolean network.
-- [ ] Structural hashing and rewriting across multiple logic levels.
-- [ ] Observability-based cleanup and sequential boundary modelling.
+- [x] Initial bit-level AIG representation with complemented edges.
+- [x] Lower supported combinational RTL operations into AIG nodes.
+- [x] Structural hashing of AND nodes and constant/identity simplification.
+- [ ] Multiply, divide, and modulo lowering.
+- [ ] Multi-level AIG rewriting and balancing.
+- [ ] Sequential boundary modelling.
 - [ ] Equivalence-oriented regression tests.
 
 ## Phase 4 — ASIC library and constraints
@@ -65,4 +68,4 @@
 
 ## Current release boundary
 
-Version 0.1 remains an early compiler milestone. It parses a documented RTL subset, performs module-local semantic checks, lowers continuous assignments into typed RTL IR, and provides basic graph optimization. It does not yet synthesize procedural RTL or produce technology-mapped standard-cell netlists.
+The AIG stage is an initial two-state combinational prototype. It is not a complete SystemVerilog synthesis engine and does not produce technology-mapped standard-cell netlists.

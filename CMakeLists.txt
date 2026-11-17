@@ -13,6 +13,7 @@ add_library(synvanta_core
     src/lowering.cpp
     src/rtl_ir.cpp
     src/optimizer.cpp
+    src/aig.cpp
     src/compiler.cpp
 )
 target_include_directories(synvanta_core PUBLIC include)
@@ -35,6 +36,7 @@ if(SYNVANTA_BUILD_TESTS)
         tests/test_semantic.cpp
         tests/test_lowering.cpp
         tests/test_optimizer.cpp
+        tests/test_aig.cpp
     )
     target_link_libraries(synvanta_tests PRIVATE synvanta_core)
     add_test(NAME synvanta_tests COMMAND synvanta_tests)
