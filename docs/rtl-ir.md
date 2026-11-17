@@ -51,7 +51,7 @@ These are initial implementation rules, not a claim of full IEEE 1800 expression
 synvanta ir examples/half_adder.sv
 ```
 
-The textual dump is intended for debugging and regression tests. The initial optimizer consumes this in-memory IR and performs constant folding, common-subexpression elimination, and dead-node removal. A stable machine-readable serialization format will be defined separately before external tools depend on it.
+The textual dump is intended for debugging and regression tests. The initial optimizer consumes this in-memory IR and performs conservative constant folding, constant-condition mux simplification, typed common-subexpression elimination, and output-rooted dead-code elimination. Internal continuous-net dependencies are inlined into output value graphs, so unobservable internal assignment records can be removed. If a module has no output ports, all assignments are retained as roots. Local simplifications are limited to unary plus, no-op resize, and muxes with identical data branches; bitwise self-identities are deliberately excluded because logic signals may carry X/Z values. A stable machine-readable serialization format will be defined separately before external tools depend on it.
 
 
 The RTL lowerer rejects unbased unsized fill literals ('0 and '1) until context-determined width propagation is implemented. It also leaves constant shifts with a negative signed shift amount unfolded rather than replacing their unknown result with zero.
