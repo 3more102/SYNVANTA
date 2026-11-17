@@ -9,7 +9,7 @@ TEST_CASE(lexer_recognizes_keywords_symbols_and_based_literals){
     REQUIRE(lexer.diagnostics().empty());
 }
 TEST_CASE(lexer_skips_line_and_block_comments){
-    synvanta::Lexer lexer("// header\\nmodule /* inline */ m(); /* tail */ endmodule","comments.sv");
+    synvanta::Lexer lexer("// header\nmodule /* inline */ m(); /* tail */ endmodule","comments.sv");
     const auto tokens=lexer.tokenize();REQUIRE(tokens.size()==7);
     REQUIRE(tokens[0].kind==synvanta::TokenKind::Module);REQUIRE(tokens[1].lexeme=="m");
     REQUIRE(tokens[5].kind==synvanta::TokenKind::Endmodule);REQUIRE(lexer.diagnostics().empty());
