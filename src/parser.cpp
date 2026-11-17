@@ -108,7 +108,7 @@ std::optional<PackedRange> Parser::parse_range(){
 }
 std::optional<int> Parser::parse_integer_literal(const Token& t)const{
     std::string s=t.lexeme;s.erase(std::remove(s.begin(),s.end(),'_'),s.end());
-    const auto apos=s.find('\'');
+        const auto apos=s.find(static_cast<char>(39));
     if(apos!=std::string::npos){
         if(apos+1>=s.size())return std::nullopt;std::size_t pos=apos+1;
         if(s[pos]=='s'||s[pos]=='S')++pos;if(pos>=s.size())return std::nullopt;
