@@ -53,3 +53,103 @@ TEST_CASE(optimizer_does_not_fold_negative_shift_counts){
  const synvanta::RtlOptimizer o;const auto r=o.optimize(d);REQUIRE(r.success());
  bool found=false;for(const auto& n:r.design.modules[0].nodes)found=found||n.op==synvanta::RtlOp::ShiftRight;REQUIRE(found);
 }
+
+
+TEST_CASE(optimizer_removes_unobservable_internal_logic) {
+    const auto design = lower_source(
+        "module dce(input logic a,input logic b,output logic y);"
+        "logic unused; assign unused=a&b; assign y=a|b; endmodule");
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(result.success());
+    const auto& module = result.design.modules[0];
+
+    REQUIRE(result.stats.dead_nodes_removed == 1);
+    REQUIRE(result.stats.assignments_removed == 1);
+    REQUIRE(module.nodes.size() == 3);
+    REQUIRE(module.nodes[2].op == synvanta::RtlOp::BitOr);
+    REQUIRE(module.assignments.size() == 1);
+    REQUIRE(module.assignments[0].target == "y");
+}
+
+TEST_CASE(optimizer_preserves_logic_reached_through_internal_nets) {
+    const auto design = lower_source(
+        "module chain(input logic a,input logic b,output logic y);"
+        "logic temp; assign temp=a^b; assign y=temp&a; endmodule");
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(result.success());
+    const auto& module = result.design.modules[0];
+
+    REQUIRE(module.nodes.size() == 4);
+    REQUIRE(module.nodes[2].op == synvanta::RtlOp::BitXor);
+    REQUIRE(module.nodes[3].op == synvanta::RtlOp::BitAnd);
+    REQUIRE(module.assignments.size() == 1);
+    REQUIRE(module.assignments[0].target == "y");
+    REQUIRE(result.stats.assignments_removed == 1);
+}
+
+TEST_CASE(optimizer_preserves_assignments_in_modules_without_outputs) {
+    const auto design = lower_source(
+        "module helper(input logic a,input logic b);"
+        "logic temp; assign temp=a^b; endmodule");
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(result.success());
+    REQUIRE(result.design.modules[0].assignments.size() == 1);
+    REQUIRE(result.stats.assignments_removed == 0);
+}
+
+TEST_CASE(optimizer_simplifies_mux_with_identical_data_inputs) {
+    const auto design = lower_source(
+        "module mux(input logic sel,input logic a,output logic y);"
+        "assign y=sel?a:a; endmodule");
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(result.success());
+    const auto& module = result.design.modules[0];
+
+    REQUIRE(result.stats.local_simplifications == 1);
+    REQUIRE(module.nodes.size() == 1);
+    REQUIRE(module.nodes[0].op == synvanta::RtlOp::Input);
+    REQUIRE(module.nodes[0].name == "a");
+    REQUIRE(module.assignments[0].value == 0);
+}
+
+TEST_CASE(optimizer_does_not_apply_two_state_identities_to_logic_inputs) {
+    const auto design = lower_source(
+        "module four_state(input logic a,output logic y);"
+        "assign y=a^a; endmodule");
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(result.success());
+    const auto& module = result.design.modules[0];
+
+    REQUIRE(module.nodes.size() == 2);
+    REQUIRE(module.nodes[1].op == synvanta::RtlOp::BitXor);
+}
+
+TEST_CASE(optimizer_rejects_non_topological_ir) {
+    synvanta::RtlDesign design;
+    synvanta::RtlModule module;
+    module.name = "invalid";
+    synvanta::RtlNode node;
+    node.id = 0;
+    node.op = synvanta::RtlOp::BitAnd;
+    node.width = 1;
+    node.operands = {1, 1};
+    module.nodes.push_back(node);
+    module.ports.push_back({"y", synvanta::PortDirection::Output, 1, false});
+    module.assignments.push_back({"y", 0, 1, false});
+    design.modules.push_back(module);
+
+    const synvanta::RtlOptimizer optimizer;
+    const auto result = optimizer.optimize(design);
+    REQUIRE(!result.success());
+    REQUIRE(result.diagnostics[0].code == "OPT0002");
+}
