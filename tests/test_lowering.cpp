@@ -68,3 +68,22 @@ TEST_CASE(lowering_rejects_multiple_drivers_on_wire_nets_explicitly) {
     }
     REQUIRE(found);
 }
+
+
+TEST_CASE(lowering_rejects_undriven_output_ports) {
+    const synvanta::Compiler compiler;
+    const auto parsed = compiler.compile(
+        "module undriven(input logic a, output logic y); endmodule",
+        "undriven_output.sv");
+    REQUIRE(parsed.success());
+
+    const synvanta::RtlLowerer lowerer;
+    const auto lowered = lowerer.lower(parsed.unit);
+    REQUIRE(!lowered.success());
+
+    bool found = false;
+    for (const auto& diagnostic : lowered.diagnostics) {
+        found = found || diagnostic.code == "LOW0010";
+    }
+    REQUIRE(found);
+}

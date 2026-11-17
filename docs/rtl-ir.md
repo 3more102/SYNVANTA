@@ -41,7 +41,7 @@ These are initial implementation rules, not a claim of full IEEE 1800 expression
 - Continuous assignments become assignment records and expression nodes.
 - Internal nets are resolved through their continuous drivers.
 - Multi-driver wire nets are accepted by frontend semantic checks but rejected by the initial RTL lowerer with LOW0009 because this IR has no net-resolution model; no driver is silently discarded.
-- Undriven references and combinational dependency cycles are reported as errors.
+- Undriven references, undriven output ports, and combinational dependency cycles are reported as errors.
 - Inout ports are rejected by this initial lowering stage.
 - Node IDs are local to each module and assigned in deterministic creation order.
 
