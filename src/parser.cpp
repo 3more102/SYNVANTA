@@ -72,7 +72,8 @@ std::optional<Module> Parser::parse_module(){
             auto a=parse_assignment();if(a)module.assignments.push_back(std::move(*a));else synchronize_module_item();continue;
         }
         if(check(TokenKind::Wire)||check(TokenKind::Logic)||check(TokenKind::Reg)||check(TokenKind::Bit)){
-            if(!parse_net_declaration(module))synchronize_module_item();continue;
+            if (!parse_net_declaration(module)) synchronize_module_item();
+            continue;
         }
         report("PAR0005","unsupported module item; SYNVANTA 0.1 accepts continuous assignments and simple net declarations",peek().location);
         synchronize_module_item();if(!check(TokenKind::Endmodule)&&!at_end())advance();
@@ -110,8 +111,10 @@ std::optional<int> Parser::parse_integer_literal(const Token& t)const{
     std::string s=t.lexeme;s.erase(std::remove(s.begin(),s.end(),'_'),s.end());
         const auto apos=s.find(static_cast<char>(39));
     if(apos!=std::string::npos){
-        if(apos+1>=s.size())return std::nullopt;std::size_t pos=apos+1;
-        if(s[pos]=='s'||s[pos]=='S')++pos;if(pos>=s.size())return std::nullopt;
+        if (apos + 1 >= s.size()) return std::nullopt;
+        std::size_t pos = apos + 1;
+        if (s[pos] == 's' || s[pos] == 'S') ++pos;
+        if (pos >= s.size()) return std::nullopt;
         const char b=s[pos++];int base=10;
         if(b=='b'||b=='B')base=2;else if(b=='o'||b=='O')base=8;else if(b=='h'||b=='H')base=16;else if(b!='d'&&b!='D')return std::nullopt;
         long long value=0;const auto r=std::from_chars(s.data()+static_cast<std::ptrdiff_t>(pos),s.data()+s.size(),value,base);

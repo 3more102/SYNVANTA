@@ -19,6 +19,8 @@ CompilationResult Compiler::compile(std::string_view source,std::string filename
 std::string format_diagnostic(const Diagnostic& d){
     const char* severity="error";if(d.severity==DiagnosticSeverity::Warning)severity="warning";if(d.severity==DiagnosticSeverity::Note)severity="note";
     std::ostringstream out;out<<(d.location.file.empty()?"<source>":d.location.file)<<':'<<d.location.line<<':'<<d.location.column<<": "<<severity;
-    if(!d.code.empty())out<<'['<<d.code<<']';out<<": "<<d.message;return out.str();
+    if (!d.code.empty()) out << '[' << d.code << ']';
+    out << ": " << d.message;
+    return out.str();
 }
 } // namespace synvanta
