@@ -5,7 +5,7 @@
 1. Constant folding: evaluate supported operations when all operands are known constants.
 2. Constant-condition mux simplification: replace a mux with its selected branch when the condition is known.
 3. Common-subexpression elimination (CSE): merge structurally identical pure operations. Commutative operations use canonical operand order.
-4. Dead-node removal: retain only nodes reachable from module assignment roots.
+4. Dead-code elimination: retain only nodes reachable from observable output assignments. If a module has no output ports, retain all assignment roots.
 
 ## Supported constant evaluation
 
@@ -15,6 +15,13 @@
 - Integer constants with known values and widths up to 64 bits.
 
 Operations are left intact when a value is unknown, contains X/Z/? digits, exceeds the supported 64-bit evaluator width, or would require unsafe evaluation such as division by zero or signed minimum divided by negative one.
+
+## Local rewrites
+
+- Remove unary plus and no-op resize nodes.
+- Replace muxes with identical true/false data inputs by that data input.
+- Do not apply x AND x, x XOR x, or similar two-state identities to logic inputs: four-state X/Z behavior has not been eliminated from the IR.
+- Do not fold negative signed shift amounts; their result is unknown in SystemVerilog.
 
 ## Safety properties
 
@@ -29,4 +36,4 @@ Operations are left intact when a value is unknown, contains X/Z/? digits, excee
 synvanta optimize examples/half_adder.sv
 ```
 
-The command prints constant-fold, mux-simplification, CSE, and dead-node counts together with the resulting IR.
+The command prints constant-fold, mux-simplification, local simplification, CSE, dead-node, and removed-assignment counts together with the resulting IR.

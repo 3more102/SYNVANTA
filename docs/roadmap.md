@@ -29,7 +29,8 @@
 - [x] Reject multi-driver wire nets and undriven outputs at the RTL-lowering boundary.
 - [x] Deterministic textual IR dump and lowering regression tests.
 - [x] Initial constant folding for supported two-state operations up to 64 bits.
-- [x] Common-subexpression elimination and dead-node removal.
+- [x] Common-subexpression elimination and output-rooted dead-code elimination.
+- [x] Constant-condition mux simplification and conservative local identities.
 - [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
 - [ ] Lower procedural assignments and sequential processes into the IR.
 - [ ] Broader bit-level constant propagation and rewrite passes.

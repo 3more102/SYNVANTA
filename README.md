@@ -4,7 +4,7 @@
 
 SYNVANTA is a compiler project focused on building an independently implemented ASIC synthesis engine. The initial engineering target is a reliable SystemVerilog frontend and a clean architecture that can grow into elaboration, RTL lowering, Boolean optimization, Liberty ingestion, technology mapping, and mapped-netlist generation.
 
-> **Current status: 0.1 frontend, RTL IR, and initial optimization.** SYNVANTA lexes/parses a documented SystemVerilog subset, performs module-local semantic checks, lowers supported continuous assignments into a typed bit-vector RTL IR, and runs initial constant folding, common-subexpression elimination, and dead-node removal. It does not yet build an AIG, read Liberty libraries, map standard cells, or emit mapped netlists.
+> **Current status: 0.1 frontend, RTL IR, and initial optimization.** SYNVANTA lexes/parses a documented SystemVerilog subset, performs module-local semantic checks, lowers supported continuous assignments into a typed bit-vector RTL IR, and runs conservative constant folding, constant-condition mux simplification, common-subexpression elimination, and output-rooted dead-code elimination. It does not yet build an AIG, read Liberty libraries, map standard cells, or emit mapped netlists.
 
 ## Build
 
@@ -29,7 +29,7 @@ synvanta optimize examples/constant_fold.sv
 synvanta optimize examples/common_subexpression.sv
 ```
 
-`check` runs lexical, syntax, and basic semantic checks. `inspect` prints module interfaces and assignment counts. `ir` prints the typed, technology-independent RTL IR. `optimize` runs the initial RTL optimization passes and prints the optimized IR with pass statistics.
+`check` runs lexical, syntax, and basic semantic checks. `inspect` prints module interfaces and assignment counts. `ir` prints the typed, technology-independent RTL IR. `optimize` runs the initial RTL optimization passes, removes logic outside observable output cones, and prints the optimized IR with pass statistics.
 
 ## Architecture
 
@@ -39,6 +39,8 @@ SystemVerilog -> Lexer -> Parser -> AST
                            Elaboration
                                   |
                          Typed RTL IR
+                                  |
+             Constant folding + CSE + output-cone DCE
                                   |
                        Boolean network
                                   |
