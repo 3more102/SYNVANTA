@@ -7,7 +7,7 @@
 - [x] SystemVerilog lexer for the initial subset.
 - [x] Module/port/continuous-assignment AST.
 - [x] Pratt expression parser.
-- [x] CLI `check` and `inspect` commands.
+- [x] CLI check and inspect commands.
 - [x] Unit tests and CI workflow.
 - [x] Module-local symbol table and basic semantic diagnostics.
 
@@ -15,10 +15,11 @@
 
 - [x] Module-local symbol table and duplicate/undeclared identifier checks.
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
-- [ ] Bit widths, signedness, casts, and expression sizing rules.
+- [ ] Complete bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.
-- [ ] `always_comb` and synthesizable procedural assignment lowering.
+- [ ] always_comb and synthesizable procedural assignment lowering.
 - [ ] Versioned supported-SystemVerilog specification.
+- [x] Preserve the fill semantics of unbased unsized '0 and '1 literals in the initial lowering subset.
 
 ## Phase 2 — Technology-independent RTL IR
 
@@ -36,10 +37,14 @@
 
 ## Phase 3 — Boolean network and optimization
 
-- [ ] Lower combinational RTL into an AIG or equivalent Boolean network.
-- [ ] Structural hashing and rewriting.
+- [x] Complemented-edge AIG literal representation.
+- [x] Bit-blast supported combinational RTL IR into AIG nodes.
+- [x] Structural hashing and basic constant/complement simplifications.
+- [x] AIG construction for Boolean logic, muxes, add/subtract, multiply, comparisons, and logical shifts.
+- [x] Exhaustive truth-table tests for representative small combinational designs.
+- [ ] AIG rewriting, balancing, and cut-based local optimization.
 - [ ] Observability-based cleanup and sequential boundary modelling.
-- [ ] Equivalence-oriented regression tests.
+- [ ] Broader equivalence-oriented regression tests and independent formal checking.
 
 ## Phase 4 — ASIC library and constraints
 
@@ -65,4 +70,4 @@
 
 ## Current release boundary
 
-Version 0.1 is a parser bring-up milestone only. It is not yet a synthesis tool and does not produce optimized or technology-mapped netlists.
+The main branch's v0.1 milestone establishes the parser, semantic checks, and typed combinational RTL IR. The AIG backend is being developed on a feature branch as the next engineering increment. Neither milestone is a complete ASIC synthesis product: sequential synthesis, full SystemVerilog semantics, Liberty mapping, SDC timing analysis, and PPA optimization remain future work.
