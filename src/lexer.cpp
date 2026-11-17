@@ -20,8 +20,11 @@ bool id_continue(char c) {
     return std::isalnum(u)!=0 || c=='_' || c=='$';
 }
 bool based_digit(char c) {
+    // Wildcard '?' digits are outside the current language subset. Keeping '?'
+    // as a separate token is necessary for an adjacent conditional operator:
+    // 1'b1?a:b must lex as NUMBER, QUESTION, IDENTIFIER, COLON, IDENTIFIER.
     const auto u=static_cast<unsigned char>(c);
-    return std::isalnum(u)!=0 || c=='_' || c=='?';
+    return std::isalnum(u)!=0 || c=='_';
 }
 }
 const char* token_kind_name(TokenKind k) {
