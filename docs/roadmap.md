@@ -7,7 +7,7 @@
 - [x] SystemVerilog lexer for the initial subset.
 - [x] Module/port/continuous-assignment AST.
 - [x] Pratt expression parser.
-- [x] CLI `check` and `inspect` commands.
+- [x] CLI \`check\` and \`inspect\` commands.
 - [x] Unit tests and CI workflow.
 - [x] Module-local symbol table and basic semantic diagnostics.
 
@@ -17,7 +17,7 @@
 - [ ] Constant-expression evaluation and parameter/localparam elaboration.
 - [ ] Bit widths, signedness, casts, and expression sizing rules.
 - [ ] Packed vectors, concatenations, slices, and bit-selects.
-- [ ] `always_comb` and synthesizable procedural assignment lowering.
+- [ ] \`always_comb\` and synthesizable procedural assignment lowering.
 - [ ] Versioned supported-SystemVerilog specification.
 
 ## Phase 2 — Technology-independent RTL IR
@@ -29,7 +29,9 @@
 - [x] Deterministic textual IR dump and lowering regression tests.
 - [ ] Complete IEEE SystemVerilog expression sizing and context-determined width rules.
 - [ ] Lower procedural assignments and sequential processes into the IR.
-- [ ] Constant propagation, dead-code elimination, and common-subexpression elimination.
+- [x] Structural common-subexpression elimination (CSE).
+- [x] Output-rooted dead-code elimination (DCE).
+- [ ] Constant propagation and constant folding.
 
 ## Phase 3 — Boolean network and optimization
 
@@ -62,4 +64,4 @@
 
 ## Current release boundary
 
-Version 0.1 is a parser bring-up milestone only. It is not yet a synthesis tool and does not produce optimized or technology-mapped netlists.
+Version 0.1 is an early frontend/RTL-IR milestone with basic graph cleanup. It is not yet a complete SystemVerilog implementation, Boolean synthesis engine, or technology-mapped ASIC compiler.
