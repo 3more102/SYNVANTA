@@ -24,7 +24,7 @@ std::optional<ConstantInfo> parse_constant(const std::string& raw) {
     std::string s; s.reserve(raw.size()); for(char ch:raw)if(ch!='_')s.push_back(ch);
     const auto apos=s.find(static_cast<char>(39));
     if(apos==std::string::npos)return ConstantInfo{32,true,s};
-    if(apos==0)return ConstantInfo{1,false,s};
+    if(apos==0)return std::nullopt;
     std::uint32_t width=0;
     const auto wr=std::from_chars(s.data(),s.data()+apos,width,10);
     if(wr.ec!=std::errc{}||wr.ptr!=s.data()+apos||width==0)return std::nullopt;
