@@ -56,4 +56,10 @@ This is reference-functional testing of the AIG, not a formal proof for arbitrar
 
 ## Not yet included
 
-The current graph has no AIG balancing, rewriting/refactoring, sequential elements, latch/clock modelling, observability cleanup, SAT-based equivalence, Liberty mapping, timing analysis, or physical estimation. Those are separate roadmap stages.
+The current graph has no rewriting/refactoring, sequential elements, latch/clock modelling, observability cleanup, SAT-based equivalence, Liberty mapping, timing analysis, or physical estimation. Those are separate roadmap stages.
+
+## Experimental AIG depth balancing
+
+Run `synvanta aig-opt <input.sv>` to apply the depth-balancing pass and report the AND-node count and longest AND path before/after. The plain `aig` command retains the original structurally hashed network.
+
+The pass re-associates positive-polarity AND cones whose internal nodes have a single fanout, using a shallowest-first merge. It keeps shared fanout cut points and complemented edges intact, chooses a replacement only when its depth is strictly lower, then sweeps unreachable nodes. This is logic-depth optimization, not a delay- or area-optimal technology mapper. Regression tests enumerate the complete four-input truth tables of balanced chains, shared logic, and complemented-edge cases.

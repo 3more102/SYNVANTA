@@ -42,6 +42,8 @@ public:
     const std::vector<AigNode>& nodes() const noexcept { return nodes_; }
     std::size_t input_count() const noexcept { return input_index_.size(); }
     std::size_t and_count() const noexcept;
+    std::size_t max_depth() const;
+    void balance(std::vector<AigAssignment>& assignments);
     void compact(std::vector<AigAssignment>& assignments);
 
 private:

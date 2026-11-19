@@ -14,7 +14,7 @@ void usage(std::ostream& output) {
            << "Usage:\n  synvanta --version\n  synvanta --help\n"
            << "  synvanta check <input.sv>\n  synvanta inspect <input.sv>\n"
            << "  synvanta ir <input.sv>\n  synvanta opt <input.sv>\n"
-           << "  synvanta aig <input.sv>\n";
+           << "  synvanta aig <input.sv>\n  synvanta aig-opt <input.sv>\n";
 }
 
 int run(const std::string& command, const std::string& path) {
@@ -38,7 +38,7 @@ int run(const std::string& command, const std::string& path) {
         return 0;
     }
 
-    if (command == "ir" || command == "opt" || command == "aig") {
+    if (command == "ir" || command == "opt" || command == "aig" || command == "aig-opt") {
         const synvanta::RtlLowerer rtl_lowerer;
         const auto rtl = rtl_lowerer.lower(compiled.unit);
         for (const auto& diagnostic : rtl.diagnostics)
@@ -73,6 +73,17 @@ int run(const std::string& command, const std::string& path) {
         for (const auto& diagnostic : aig.diagnostics)
             std::cerr << synvanta::format_diagnostic(diagnostic) << '\n';
         if (!aig.success()) return 1;
+        if (command == "aig-opt") {
+            for (auto& module : aig.design.modules) {
+                const auto depth_before = module.network.max_depth();
+                const auto gates_before = module.network.and_count();
+                module.network.balance(module.assignments);
+                std::cout << "AIG balance " << module.name << ": depth "
+                          << depth_before << " -> " << module.network.max_depth()
+                          << ", AND nodes " << gates_before << " -> "
+                          << module.network.and_count() << '\n';
+            }
+        }
         std::cout << synvanta::dump_aig_design(aig.design);
         return 0;
     }

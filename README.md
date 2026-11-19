@@ -26,6 +26,7 @@ synvanta inspect examples/mux2.sv
 synvanta ir examples/half_adder.sv
 synvanta opt examples/half_adder.sv
 synvanta aig examples/half_adder.sv
+synvanta aig-opt examples/half_adder.sv
 ```
 
 - `check` validates the supported lexical, syntactic, and semantic subset.
