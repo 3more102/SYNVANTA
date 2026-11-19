@@ -2,6 +2,7 @@
 #include "synvanta/compiler.hpp"
 #include "synvanta/lowering.hpp"
 #include "synvanta/optimizer.hpp"
+#include "synvanta/verilog_emitter.hpp"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -11,7 +12,7 @@ void usage(std::ostream& o){
     o<<"SYNVANTA 0.1.0 - independent SystemVerilog-to-ASIC synthesis compiler\n\n"
      <<"Usage:\n  synvanta --version\n  synvanta --help\n  synvanta check <input.sv>\n"
      <<"  synvanta inspect <input.sv>\n  synvanta ir <input.sv>\n"
-     <<"  synvanta optimize <input.sv>\n  synvanta aig <input.sv>\n";
+     <<"  synvanta optimize <input.sv>\n  synvanta aig <input.sv>\n  synvanta emit-verilog <input.sv>\n";
 }
 int run(const std::string& command,const std::string& path){
     std::ifstream in(path,std::ios::binary);if(!in){std::cerr<<"error: cannot open input file: "<<path<<'\n';return 2;}
@@ -20,7 +21,7 @@ int run(const std::string& command,const std::string& path){
     for(const auto& d:result.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
     if(!result.success())return 1;
     if(command=="check"){std::cout<<"SYNVANTA: syntax and semantic checks passed ("<<result.unit.modules.size()<<" module(s)).\n";return 0;}
-    if(command=="ir"||command=="optimize"||command=="aig"){
+    if(command=="ir"||command=="optimize"||command=="aig"||command=="emit-verilog"){
         const synvanta::RtlLowerer lowerer;
         const auto lowered=lowerer.lower(result.unit);
         for(const auto& d:lowered.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
@@ -30,7 +31,7 @@ int run(const std::string& command,const std::string& path){
         const auto optimized=optimizer.optimize(lowered.design);
         for(const auto& d:optimized.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
         if(!optimized.success())return 1;
-        if(command=="aig"){
+        if(command=="aig"||command=="emit-verilog"){
             const synvanta::AigBuilder builder;
             const auto aig=builder.build(optimized.design);
             for(const auto& d:aig.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
@@ -41,6 +42,14 @@ int run(const std::string& command,const std::string& path){
             for(const auto& d:balanced.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
             if(!balanced.success())return 1;
 
+            if(command=="emit-verilog"){
+                const synvanta::GenericVerilogEmitter emitter;
+                const auto emitted=emitter.emit(balanced.design);
+                for(const auto& d:emitted.diagnostics)std::cerr<<synvanta::format_diagnostic(d)<<'\n';
+                if(!emitted.success())return 1;
+                std::cout<<emitted.verilog;
+                return 0;
+            }
             std::cout<<"# AIG optimization: nodes="<<balanced.stats.nodes_before
                      <<"->"<<balanced.stats.nodes_after
                      <<" ANDs="<<balanced.stats.and_nodes_before
@@ -73,6 +82,6 @@ int run(const std::string& command,const std::string& path){
 int main(int argc,char** argv){
     if(argc==2&&std::string(argv[1])=="--version"){std::cout<<"SYNVANTA 0.1.0\n";return 0;}
     if(argc==2&&std::string(argv[1])=="--help"){usage(std::cout);return 0;}
-    if(argc==3){const std::string cmd(argv[1]);if(cmd=="check"||cmd=="inspect"||cmd=="ir"||cmd=="optimize"||cmd=="aig")return run(cmd,argv[2]);}
+    if(argc==3){const std::string cmd(argv[1]);if(cmd=="check"||cmd=="inspect"||cmd=="ir"||cmd=="optimize"||cmd=="aig"||cmd=="emit-verilog")return run(cmd,argv[2]);}
     usage(std::cerr);return 2;
 }
