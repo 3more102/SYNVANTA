@@ -17,3 +17,6 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: AIG CLI smoke test
         run: ./build/synvanta aig examples/half_adder.sv
+
+      - name: Generic Verilog CLI smoke test
+        run: ./build/synvanta emit-verilog examples/half_adder.sv | grep -q endmodule
